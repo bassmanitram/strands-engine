@@ -14,14 +14,16 @@ Key Responsibilities:
 """
 
 import asyncio
+from contextlib import ExitStack
 from typing import Any, Dict, List, Optional
 from pathlib import Path
 
 from loguru import logger
 
 from .config import EngineConfig
-from .ptypes import Message, Tool, FrameworkAdapter, ToolCreationResult
+from .ptypes import Message, Tool, FrameworkAdapter, ToolCreationResult, ToolConfig
 from .session import DelegatingSession
+from .tools import ToolFactory, discover_tool_configs
 
 
 class Engine:
@@ -53,6 +55,8 @@ class Engine:
         self._loaded_tools: List[Tool] = []  # Tools loaded for Agent, not executed by engine
         self._framework_adapter: Optional[FrameworkAdapter] = None
         self._conversation_manager = None  # strands-agents ConversationManager
+        self._exit_stack = ExitStack()  # For resource management
+        self._tool_factory: Optional[ToolFactory] = None
         
         # Create DelegatingSession proxy - will be inactive if no session_id provided
         self._session_manager = DelegatingSession(
@@ -152,6 +156,9 @@ class Engine:
         logger.info("Shutting down engine...")
         
         try:
+            # Clean up resources managed by exit stack (MCP connections, etc.)
+            self._exit_stack.close()
+            
             # Clean up agent and tool resources
             if self._agent:
                 # TODO: Implement agent cleanup when strands-agents integration is complete
@@ -176,6 +183,11 @@ class Engine:
     def session_manager(self) -> DelegatingSession:
         """Get the session manager for external control."""
         return self._session_manager
+    
+    @property
+    def loaded_tools(self) -> List[Tool]:
+        """Get the list of loaded tools for inspection."""
+        return self._loaded_tools.copy()
     
     @property
     def conversation_manager_info(self) -> str:
@@ -207,21 +219,60 @@ class Engine:
         IMPORTANT: The engine loads and configures tools, but does NOT execute them.
         Tool execution is handled entirely by strands-agents when the Agent processes messages.
         """
+        if not self.config.tool_config_paths:
+            logger.info("No tool configuration paths provided")
+            return
+            
         logger.info(f"Loading tools from {len(self.config.tool_config_paths)} config paths")
         
-        # TODO: Implement tool loading from paths using tool factory pattern
-        # This will involve:
-        # 1. Reading tool config files (JSON/YAML)
-        # 2. Instantiating appropriate tool adapters (MCP, Python, etc.)
-        # 3. Creating tool objects that strands-agents can use
-        # 4. Collecting ToolCreationResult for each config
+        # Create tool factory with exit stack for resource management
+        self._tool_factory = ToolFactory(self._exit_stack)
+        
+        # Discover tool configurations from provided paths
+        tool_configs, discovery_result = discover_tool_configs(self.config.tool_config_paths)
+        
+        if discovery_result.failed_configs:
+            logger.warning(f"Failed to load {len(discovery_result.failed_configs)} tool configurations")
+            for failed_config in discovery_result.failed_configs:
+                logger.warning(f"  - {failed_config.get('config_id', 'unknown')}: {failed_config.get('error', 'unknown error')}")
+        
+        # Create tools from valid configurations
+        all_loaded_tools = []
+        successful_configs = 0
+        failed_configs = 0
+        
+        for tool_config in tool_configs:
+            # Skip disabled tools
+            if tool_config.get('disabled', False):
+                logger.info(f"Skipping disabled tool: {tool_config.get('id', 'unknown')}")
+                continue
+                
+            logger.debug(f"Creating tools for config: {tool_config.get('id', 'unknown')}")
+            
+            try:
+                result = self._tool_factory.create_tools(tool_config)
+                
+                if result.tools:
+                    all_loaded_tools.extend(result.tools)
+                    successful_configs += 1
+                    logger.info(f"✓ Loaded {len(result.tools)} tools from '{tool_config.get('id', 'unknown')}'")
+                    
+                    if result.missing_functions:
+                        logger.warning(f"  Missing functions in '{tool_config.get('id', 'unknown')}': {result.missing_functions}")
+                else:
+                    failed_configs += 1
+                    error_msg = result.error or "No tools created"
+                    logger.error(f"✗ Failed to load tools from '{tool_config.get('id', 'unknown')}': {error_msg}")
+                    
+            except Exception as e:
+                failed_configs += 1
+                logger.error(f"✗ Exception loading tools from '{tool_config.get('id', 'unknown')}': {e}")
+        
+        self._loaded_tools = all_loaded_tools
+        logger.info(f"Tool loading complete: {len(self._loaded_tools)} tools from {successful_configs} configs ({failed_configs} failed)")
         
         # The loaded tools will be passed to strands-agents Agent constructor
         # The Agent will handle all tool execution - engine never executes tools directly
-        
-        # Placeholder
-        self._loaded_tools = []
-        logger.info(f"Loaded {len(self._loaded_tools)} tools for Agent configuration")
     
     async def _process_files(self) -> None:
         """Process uploaded files and add to context."""
@@ -328,4 +379,4 @@ class Engine:
         # 5. Return the Agent's response
         
         logger.debug("Processing with strands-agents Agent (placeholder)")
-        return f"Echo: {message}"
+        return f"Echo: {message} (loaded {len(self._loaded_tools)} tools)"

@@ -1,112 +1,98 @@
 """
 Type definitions for strands_engine.
 
-This module provides clean type definitions focused on the engine's core responsibilities:
-- Message processing
-- Tool configuration and loading (NOT execution)
-- Framework adapters
-- Session handling
-
-Note: Tools are loaded and configured by the engine, but executed by strands-agents.
+Provides common types used throughout the engine while maintaining
+compatibility with strands-agents and wrapper applications.
 """
 
-from typing import Any, Dict, List, Optional, Protocol, Tuple, Union
+from typing import Any, Dict, List, Optional, Union, Protocol, runtime_checkable, NamedTuple
+from typing_extensions import TypedDict
 from pathlib import Path
-from dataclasses import dataclass
 
-
-# Basic types
-JSONValue = Union[str, int, float, bool, None, Dict[str, Any], List[Any]]
-JSONDict = Dict[str, JSONValue]
+# Common type aliases
 PathLike = Union[str, Path]
+JSONDict = Dict[str, Any]
 
-# Message content types
-@dataclass
-class TextBlock:
-    """Text content block."""
-    type: str = "text"
-    text: str = ""
+# Message type for conversation content
+class Message(TypedDict):
+    """Standard message format for conversations."""
+    role: str  # "user", "assistant", "system"
+    content: str
 
-@dataclass  
-class ImageBlock:
-    """Image content block."""
-    type: str = "image"
-    source: Dict[str, Any] = None
+# Tool configuration types (what engine manages)
 
-ContentBlock = Union[TextBlock, ImageBlock, Dict[str, Any]]
-MessageContent = Union[str, List[ContentBlock]]
+class BaseToolConfig(TypedDict):
+    """Base tool configuration that engine manages."""
+    id: str
+    type: str  # "mcp" or "python"
+    disabled: bool
 
-@dataclass
-class Message:
-    """Conversation message."""
-    role: str
-    content: MessageContent
-    timestamp: Optional[str] = None
-    metadata: Optional[Dict[str, Any]] = None
+class MCPToolConfig(BaseToolConfig):
+    """MCP tool configuration - engine only manages connection details."""
+    # For stdio transport
+    command: Optional[str]
+    args: Optional[List[str]]
+    env: Optional[Dict[str, str]]
+    # For HTTP transport
+    url: Optional[str]
+    # Optional functions filter
+    functions: Optional[List[str]]
 
-# Tool types - NOTE: Tools are loaded by engine but executed by strands-agents
+class PythonToolConfig(BaseToolConfig):
+    """Python tool configuration - engine only manages module loading."""
+    module_path: str
+    functions: List[str]
+    package_path: Optional[str]
+    source_file: Optional[str]  # Set by discovery process
+
+# Union of all tool config types
+ToolConfig = Union[MCPToolConfig, PythonToolConfig]
+
+# Protocol for tool objects (what strands-agents provides)
+@runtime_checkable
 class Tool(Protocol):
     """
-    Protocol for tool objects that are loaded by the engine and passed to strands-agents.
-    
-    The engine is responsible ONLY for loading and configuring tools from config files.
-    Tool execution is handled entirely by strands-agents - the engine never executes tools directly.
+    Protocol for tool objects that strands-agents provides.
+    Engine doesn't need to know implementation details.
     """
-    
-    @property
-    def name(self) -> str:
-        """Tool name for identification."""
-        ...
+    pass
 
-# Tool loading result types
-@dataclass
-class ToolCreationResult:
-    """Result of tool creation from configuration."""
-    tools: List[Tool]
-    requested_functions: List[str]
-    found_functions: List[str] 
-    missing_functions: List[str]
-    error: Optional[str] = None
+# Tool creation result
+class ToolCreationResult(NamedTuple):
+    """Detailed result of tool creation with missing function tracking."""
+    tools: List[Any]
+    requested_functions: List[str]  # Functions that were requested
+    found_functions: List[str]      # Functions that were actually found
+    missing_functions: List[str]    # Functions that were requested but not found
+    error: Optional[str]
+
+# Tool discovery result
+class ToolDiscoveryResult(NamedTuple):
+    """Result of tool configuration discovery."""
+    successful_configs: List[ToolConfig]
+    failed_configs: List[Dict[str, Any]]
+    total_files_scanned: int
 
 # Framework adapter protocol
+@runtime_checkable
 class FrameworkAdapter(Protocol):
-    """
-    Protocol for framework-specific adapters.
+    """Protocol for framework-specific adapters."""
     
-    Adapters are responsible for:
-    - Adapting tool schemas for specific LLM providers
-    - Preparing agent initialization arguments
-    - Transforming content for framework compatibility
-    """
+    def adapt_tools(self, tools: List[Tool]) -> List[Tool]:
+        """Adapt tools for the specific framework."""
+        ...
     
-    def adapt_tools(self, tools: List[Tool], model_string: str) -> List[Tool]:
-        """
-        Adapt tools for specific framework.
-        
-        This modifies tool schemas as needed for the LLM provider
-        (e.g., removing unsupported properties).
-        """
+    def prepare_agent_args(self, 
+                          system_prompt: Optional[str] = None,
+                          messages: Optional[List[Message]] = None,
+                          **kwargs) -> Dict[str, Any]:
+        """Prepare arguments for Agent initialization."""
         ...
-        
-    def prepare_agent_args(
-        self, 
-        system_prompt: str,
-        messages: List[Message],
-        startup_files_content: Optional[List[Message]] = None,
-        emulate_system_prompt: bool = False
-    ) -> Dict[str, Any]:
-        """
-        Prepare arguments for strands-agents Agent initialization.
-        
-        This handles framework-specific agent configuration needs.
-        """
-        ...
-        
-    def transform_content(self, content: Any) -> Any:
-        """Transform content for framework compatibility."""
-        ...
-        
-    @property
-    def expected_exceptions(self) -> Tuple[type[Exception], ...]:
-        """Expected exception types for this framework."""
-        ...
+
+# File content types for uploads
+class FileContent(NamedTuple):
+    """Processed file content."""
+    path: Path
+    content: str
+    mimetype: Optional[str]
+    metadata: Dict[str, Any]

@@ -3,8 +3,10 @@ Tests for strands_engine core Engine functionality.
 """
 
 import pytest
+import tempfile
+import json
 from pathlib import Path
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, patch, MagicMock
 
 from strands_engine import Engine, EngineConfig
 from strands_engine.ptypes import Message
@@ -170,6 +172,20 @@ class TestEngine:
         assert engine.session_manager is not None
         assert engine.session_manager.session_id == "inactive"
         assert engine._conversation_manager is None
+        assert engine._tool_factory is None
+        assert len(engine.loaded_tools) == 0
+    
+    def test_engine_creation_with_tool_paths(self):
+        """Test engine creation with tool configuration paths."""
+        config = EngineConfig(
+            model="gpt-4o",
+            tool_config_paths=["/path/to/tools.json", "/path/to/more_tools.yaml"]
+        )
+        
+        engine = Engine(config)
+        assert len(engine.config.tool_config_paths) == 2
+        assert engine.config.tool_config_paths[0] == Path("/path/to/tools.json")
+        assert engine.config.tool_config_paths[1] == Path("/path/to/more_tools.yaml")
     
     def test_engine_creation_with_conversation_manager(self):
         """Test engine creation with conversation manager configuration."""
@@ -210,17 +226,15 @@ class TestEngine:
         assert engine.session_manager.session_id == "inactive"
     
     @pytest.mark.asyncio
-    async def test_initialization(self):
-        """Test engine initialization."""
+    async def test_initialization_no_tools(self):
+        """Test engine initialization without tools."""
         engine = Engine(self.config)
         
-        with patch.object(engine, '_load_tools') as mock_load_tools, \
-             patch.object(engine, '_process_files') as mock_process_files, \
+        with patch.object(engine, '_process_files') as mock_process_files, \
              patch.object(engine, '_setup_framework_adapter') as mock_setup_adapter, \
              patch.object(engine, '_setup_conversation_manager') as mock_setup_conv_mgr, \
              patch.object(engine, '_setup_agent') as mock_setup_agent:
             
-            mock_load_tools.return_value = None
             mock_process_files.return_value = None
             mock_setup_adapter.return_value = None
             mock_setup_conv_mgr.return_value = None
@@ -234,13 +248,56 @@ class TestEngine:
             assert success is True
             assert engine._initialized is True
             assert engine.is_ready is True
+            assert len(engine.loaded_tools) == 0  # No tools loaded
             
-            # Verify initialization steps were called (includes conversation manager setup)
-            mock_load_tools.assert_called_once()
+            # Verify initialization steps were called
             mock_process_files.assert_called_once()
             mock_setup_adapter.assert_called_once()
             mock_setup_conv_mgr.assert_called_once()
             mock_setup_agent.assert_called_once()
+    
+    @pytest.mark.asyncio
+    async def test_initialization_with_tools(self):
+        """Test engine initialization with tool loading."""
+        # Create a temporary directory with a tool config
+        with tempfile.TemporaryDirectory() as temp_dir:
+            tool_config = {
+                "id": "test_tool",
+                "type": "python",
+                "module_path": "os.path",
+                "functions": ["exists"],
+                "disabled": False
+            }
+            
+            config_file = Path(temp_dir) / "test.tools.json"
+            with open(config_file, 'w') as f:
+                json.dump(tool_config, f)
+            
+            config = EngineConfig(
+                model="gpt-4o",
+                tool_config_paths=[temp_dir]
+            )
+            engine = Engine(config)
+            
+            with patch.object(engine, '_process_files') as mock_process_files, \
+                 patch.object(engine, '_setup_framework_adapter') as mock_setup_adapter, \
+                 patch.object(engine, '_setup_conversation_manager') as mock_setup_conv_mgr, \
+                 patch.object(engine, '_setup_agent') as mock_setup_agent:
+                
+                mock_process_files.return_value = None
+                mock_setup_adapter.return_value = None
+                mock_setup_conv_mgr.return_value = None
+                mock_setup_agent.return_value = None
+                
+                # Mock agent to make is_ready return True
+                engine._agent = "mock_agent"
+                
+                success = await engine.initialize()
+                
+                assert success is True
+                assert engine._initialized is True
+                assert len(engine.loaded_tools) == 1  # One tool loaded
+                assert callable(engine.loaded_tools[0])  # Should be os.path.exists
     
     @pytest.mark.asyncio
     async def test_initialization_failure(self):
@@ -357,6 +414,27 @@ class TestEngine:
             
             # Should only have called _load_tools once
             mock_load_tools.assert_called_once()
+    
+    def test_loaded_tools_property(self):
+        """Test loaded_tools property returns a copy."""
+        engine = Engine(self.config)
+        
+        # Initially empty
+        tools = engine.loaded_tools
+        assert tools == []
+        
+        # Add a mock tool
+        mock_tool = MagicMock()
+        engine._loaded_tools.append(mock_tool)
+        
+        # Property should return a copy
+        tools = engine.loaded_tools
+        assert len(tools) == 1
+        assert tools[0] is mock_tool
+        
+        # Modifying returned list shouldn't affect internal list
+        tools.clear()
+        assert len(engine._loaded_tools) == 1
 
 
 class TestDelegatingSessionIntegration:
@@ -391,3 +469,78 @@ class TestDelegatingSessionIntegration:
         session_manager = engine.session_manager
         assert session_manager is not None
         assert session_manager.session_id == "test"
+
+
+class TestEngineToolIntegration:
+    """Test engine integration with tool loading system."""
+    
+    @pytest.mark.asyncio
+    async def test_disabled_tools_skipped(self):
+        """Test that disabled tools are skipped during loading."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            # Create a disabled tool config
+            tool_config = {
+                "id": "disabled_tool",
+                "type": "python",
+                "module_path": "os.path",
+                "functions": ["exists"],
+                "disabled": True  # This tool is disabled
+            }
+            
+            config_file = Path(temp_dir) / "disabled.tools.json"
+            with open(config_file, 'w') as f:
+                json.dump(tool_config, f)
+            
+            config = EngineConfig(
+                model="gpt-4o",
+                tool_config_paths=[temp_dir]
+            )
+            engine = Engine(config)
+            
+            # Mock other initialization steps
+            with patch.object(engine, '_process_files'), \
+                 patch.object(engine, '_setup_framework_adapter'), \
+                 patch.object(engine, '_setup_conversation_manager'), \
+                 patch.object(engine, '_setup_agent'):
+                
+                engine._agent = "mock_agent"
+                await engine.initialize()
+                
+                # No tools should be loaded because it's disabled
+                assert len(engine.loaded_tools) == 0
+    
+    @pytest.mark.asyncio
+    async def test_tool_loading_error_handling(self):
+        """Test error handling during tool loading."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            # Create an invalid Python tool config
+            tool_config = {
+                "id": "invalid_tool",
+                "type": "python",
+                "module_path": "nonexistent_module",
+                "functions": ["nonexistent_function"],
+                "disabled": False
+            }
+            
+            config_file = Path(temp_dir) / "invalid.tools.json"
+            with open(config_file, 'w') as f:
+                json.dump(tool_config, f)
+            
+            config = EngineConfig(
+                model="gpt-4o",
+                tool_config_paths=[temp_dir]
+            )
+            engine = Engine(config)
+            
+            # Mock other initialization steps
+            with patch.object(engine, '_process_files'), \
+                 patch.object(engine, '_setup_framework_adapter'), \
+                 patch.object(engine, '_setup_conversation_manager'), \
+                 patch.object(engine, '_setup_agent'):
+                
+                engine._agent = "mock_agent"
+                success = await engine.initialize()
+                
+                # Initialization should still succeed despite tool loading failures
+                assert success is True
+                assert len(engine.loaded_tools) == 0  # No tools loaded due to errors
