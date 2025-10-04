@@ -2,7 +2,13 @@
 Strands Engine - A conversational AI engine built on strands-agents.
 
 This package provides a focused engine for orchestrating LLM interactions
-with tools, session management, and multi-framework support.
+with tool loading, session management, and multi-framework support.
+
+Key Architecture:
+- Engine loads and configures tools (strands-agents executes them)
+- Engine processes files and manages sessions
+- Engine creates and coordinates strands-agents Agent
+- Agent handles all tool execution and LLM communication
 
 Main entry points:
 - Engine: Core conversation orchestration engine
@@ -11,7 +17,7 @@ Main entry points:
 
 from .engine import Engine
 from .config import EngineConfig
-from .types import Message, Tool, FrameworkAdapter
+from .ptypes import Message, Tool, FrameworkAdapter, ToolCreationResult
 
 __version__ = "0.1.0"
 __all__ = [
@@ -23,4 +29,5 @@ __all__ = [
     "Message",
     "Tool", 
     "FrameworkAdapter",
+    "ToolCreationResult",
 ]
