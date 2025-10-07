@@ -1,59 +1,31 @@
-"""
-Core engine for strands_engine.
-
-Provides the main Engine class for orchestrating conversational AI interactions
-with tool loading, conversation management, session management, and multi-framework support.
-
-Key Responsibilities:
-- Load tools from configuration files (tools are executed by strands-agents)
-- Process uploaded files into content blocks
-- Create conversation manager based on configuration
-- Create DelegatingSession proxy for optional session management
-- Configure and initialize strands-agents Agent with tools and settings
-- Orchestrate message processing through the Agent
-"""
-
-import asyncio
 from contextlib import ExitStack
-from typing import Any, Dict, List, Optional
-from pathlib import Path
+from typing import List, Optional
 
 from loguru import logger
+from strands import Agent
+
+from strands_engine.agent import WrappedAgent
+from strands_engine.conversation import ConversationManagerFactory
+from strands_engine.framework.base_adapter import load_framework_adapter
+from strands.agent.conversation_manager import ConversationManager
+from strands.handlers.callback_handler import PrintingCallbackHandler
+
+from strands_engine.utils import files_to_content_blocks
 
 from .config import EngineConfig
-from .ptypes import Message, Tool, FrameworkAdapter, ToolCreationResult, ToolConfig
+from .ptypes import Tool, FrameworkAdapter
 from .session import DelegatingSession
-from .tools import ToolFactory, discover_tool_configs
+from .tools import ToolFactory
 
 
-class Engine:
-    """
-    Core conversational AI engine.
-    
-    Orchestrates LLM interactions by:
-    - Loading and configuring tools for strands-agents (does NOT execute tools directly)
-    - Processing files into content blocks
-    - Creating conversation manager based on configuration
-    - Creating DelegatingSession proxy for optional session management
-    - Creating and configuring strands-agents Agent
-    - Coordinating message processing through the Agent
-    
-    The engine is designed to be used by wrapper applications that handle
-    configuration resolution and user interface concerns.
-    """
-    
+class AgentFactory:
     def __init__(self, config: EngineConfig):
-        """
-        Initialize the engine with resolved configuration.
-        
-        Args:
-            config: Engine configuration with all parameters resolved
-        """
         self.config = config
         self._initialized = False
         self._agent = None  # strands-agents Agent instance
         self._loaded_tools: List[Tool] = []  # Tools loaded for Agent, not executed by engine
         self._framework_adapter: Optional[FrameworkAdapter] = None
+        self._callback_handler : Optional[PrintingCallbackHandler] = None
         self._conversation_manager = None  # strands-agents ConversationManager
         self._exit_stack = ExitStack()  # For resource management
         self._tool_factory: Optional[ToolFactory] = None
@@ -63,30 +35,12 @@ class Engine:
             session_name=config.session_id,
             sessions_home=config.sessions_home
         )
-        
-        logger.info(f"Engine created with model: {config.model}")
-        logger.info(f"Conversation manager: {config.conversation_manager_type}")
-        if config.uses_sliding_window:
-            logger.info(f"Sliding window size: {config.sliding_window_size}")
-        elif config.uses_summarizing:
-            logger.info(f"Summarizing (ratio: {config.summary_ratio}, preserve: {config.preserve_recent_messages})")
-            if config.summarization_model:
-                logger.info(f"Summarization model: {config.summarization_model}")
-        
-        if config.sessions_home:
-            logger.info(f"Sessions home: {config.sessions_home}")
-        if config.session_id:
-            logger.info(f"Session ID: {config.session_id} (will activate session)")
-        else:
-            logger.info("No session_id specified - session will remain inactive")
+
+        self._callback_handler = PrintingCallbackHandler()
+
+        logger.debug(f"Engine created with config: {config}")
     
     async def initialize(self) -> bool:
-        """
-        Initialize the engine with tools, conversation manager, session proxy, and agent.
-        
-        Returns:
-            True if initialization successful, False otherwise
-        """
         if self._initialized:
             logger.warning("Engine already initialized")
             return True
@@ -94,23 +48,18 @@ class Engine:
         try:
             logger.info("Initializing strands engine...")
             
+            # 3. Initialize framework adapter
+            self._setup_framework_adapter()
+            
             # 1. Load tools from provided config paths (for Agent configuration, not direct execution)
             await self._load_tools()
             
             # 2. Process uploaded files
-            await self._process_files()
-            
-            # 3. Initialize framework adapter
-            self._setup_framework_adapter()
+            await self._load_initial_files()
             
             # 4. Create conversation manager
             self._setup_conversation_manager()
             
-            # 5. Create and configure strands-agents Agent with tools, conversation manager, and session proxy
-            await self._setup_agent()
-            
-            self._initialized = True
-            logger.info("Engine initialization complete")
             return True
             
         except Exception as e:
@@ -118,18 +67,6 @@ class Engine:
             return False
     
     async def process_message(self, message: str) -> str:
-        """
-        Process a user message and return response.
-        
-        Args:
-            message: User message to process
-            
-        Returns:
-            Response string from the strands-agents Agent
-            
-        Raises:
-            RuntimeError: If engine not initialized
-        """
         if not self._initialized:
             raise RuntimeError("Engine not initialized. Call initialize() first.")
         
@@ -147,236 +84,73 @@ class Engine:
             logger.error(f"Error processing message: {e}")
             raise
     
-    async def shutdown(self) -> None:
-        """
-        Clean shutdown of the engine.
-        
-        Session saving is handled automatically by DelegatingSession if active.
-        """
-        logger.info("Shutting down engine...")
-        
-        try:
-            # Clean up resources managed by exit stack (MCP connections, etc.)
-            self._exit_stack.close()
-            
-            # Clean up agent and tool resources
-            if self._agent:
-                # TODO: Implement agent cleanup when strands-agents integration is complete
-                # This may include cleaning up tool connections (MCP servers, etc.)
-                pass
-            
-            # DelegatingSession automatically handles session persistence if active
-            logger.info("Session management handled by DelegatingSession")
-                
-            self._initialized = False
-            logger.info("Engine shutdown complete")
-            
-        except Exception as e:
-            logger.error(f"Error during engine shutdown: {e}")
-    
-    @property
-    def is_ready(self) -> bool:
-        """Check if engine is initialized and ready."""
-        return self._initialized and self._agent is not None
-    
-    @property
-    def session_manager(self) -> DelegatingSession:
-        """Get the session manager for external control."""
-        return self._session_manager
-    
-    @property
-    def loaded_tools(self) -> List[Tool]:
-        """Get the list of loaded tools for inspection."""
-        return self._loaded_tools.copy()
-    
-    @property
-    def conversation_manager_info(self) -> str:
-        """Get information about the current conversation manager."""
-        if not self._conversation_manager:
-            return "Conversation Management: Not initialized"
-        
-        if self.config.conversation_manager_type == "null":
-            return "Conversation Management: Disabled (full history preserved)"
-        elif self.config.conversation_manager_type == "sliding_window":
-            truncate_info = ("with result truncation" if self.config.should_truncate_results 
-                           else "without result truncation")
-            return (f"Conversation Management: Sliding Window "
-                   f"(size: {self.config.sliding_window_size}, {truncate_info})")
-        elif self.config.conversation_manager_type == "summarizing":
-            summarization_model = self.config.summarization_model or "<same as main model>"
-            return (f"Conversation Management: Summarizing "
-                   f"(model: {summarization_model}, ratio: {self.config.summary_ratio}, "
-                   f"preserve: {self.config.preserve_recent_messages})")
-        else:
-            return f"Conversation Management: {type(self._conversation_manager).__name__}"
-    
-    # Private implementation methods
-    
     async def _load_tools(self) -> None:
-        """
-        Load tools from configuration paths for Agent configuration.
-        
-        IMPORTANT: The engine loads and configures tools, but does NOT execute them.
-        Tool execution is handled entirely by strands-agents when the Agent processes messages.
-        """
         if not self.config.tool_config_paths:
-            logger.info("No tool configuration paths provided")
             return
             
-        logger.info(f"Loading tools from {len(self.config.tool_config_paths)} config paths")
+        logger.debug(f"Loading tools from {len(self.config.tool_config_paths)} config paths")
         
         # Create tool factory with exit stack for resource management
-        self._tool_factory = ToolFactory(self._exit_stack)
+        tool_factory = ToolFactory(self._exit_stack)
         
         # Discover tool configurations from provided paths
-        tool_configs, discovery_result = discover_tool_configs(self.config.tool_config_paths)
+        tool_configs, discovery_result = tool_factory.load_tool_configs(self.config.tool_config_paths)
         
         if discovery_result.failed_configs:
             logger.warning(f"Failed to load {len(discovery_result.failed_configs)} tool configurations")
             for failed_config in discovery_result.failed_configs:
                 logger.warning(f"  - {failed_config.get('config_id', 'unknown')}: {failed_config.get('error', 'unknown error')}")
         
-        # Create tools from valid configurations
-        all_loaded_tools = []
-        successful_configs = 0
-        failed_configs = 0
-        
-        for tool_config in tool_configs:
-            # Skip disabled tools
-            if tool_config.get('disabled', False):
-                logger.info(f"Skipping disabled tool: {tool_config.get('id', 'unknown')}")
-                continue
-                
-            logger.debug(f"Creating tools for config: {tool_config.get('id', 'unknown')}")
-            
-            try:
-                result = self._tool_factory.create_tools(tool_config)
-                
-                if result.tools:
-                    all_loaded_tools.extend(result.tools)
-                    successful_configs += 1
-                    logger.info(f"✓ Loaded {len(result.tools)} tools from '{tool_config.get('id', 'unknown')}'")
-                    
-                    if result.missing_functions:
-                        logger.warning(f"  Missing functions in '{tool_config.get('id', 'unknown')}': {result.missing_functions}")
-                else:
-                    failed_configs += 1
-                    error_msg = result.error or "No tools created"
-                    logger.error(f"✗ Failed to load tools from '{tool_config.get('id', 'unknown')}': {error_msg}")
-                    
-            except Exception as e:
-                failed_configs += 1
-                logger.error(f"✗ Exception loading tools from '{tool_config.get('id', 'unknown')}': {e}")
-        
+        all_loaded_tools = tool_factory.create_tools(tool_configs)
         self._loaded_tools = all_loaded_tools
-        logger.info(f"Tool loading complete: {len(self._loaded_tools)} tools from {successful_configs} configs ({failed_configs} failed)")
-        
-        # The loaded tools will be passed to strands-agents Agent constructor
-        # The Agent will handle all tool execution - engine never executes tools directly
+        self.loaded_tools = self.framework_adapter.adapt_tools(self.loaded_tools)
+
     
-    async def _process_files(self) -> None:
-        """Process uploaded files and add to context."""
+    async def _load_initial_files(self) -> None:
         if not self.config.file_paths:
             return
-            
-        logger.info(f"Processing {len(self.config.file_paths)} uploaded files")
         
-        # TODO: Implement file processing
-        # This will involve:
-        # 1. Reading file contents based on mimetype
-        # 2. Creating appropriate content blocks (text, image, etc.)
-        # 3. Adding processed content to initial messages or context
-        
-        # Placeholder
-        logger.info("File processing complete")
+        self.startup_files_content = files_to_content_blocks(self.config.file_paths)
     
     def _setup_framework_adapter(self) -> None:
-        """Setup framework-specific adapter."""
-        # TODO: Implement framework detection and adapter selection
-        # This will involve:
-        # 1. Determining the framework from model string (OpenAI, Anthropic, Bedrock, LiteLLM)
-        # 2. Instantiating appropriate adapter
-        # 3. The adapter will later be used to adapt tools and prepare agent args
-        
-        logger.info(f"Setting up framework adapter for model: {self.config.model}")
-        self._framework_adapter = None  # Placeholder
+        self._framework_adapter = load_framework_adapter(self.framework_name)()
     
-    def _setup_conversation_manager(self) -> None:
-        """Create conversation manager based on configuration."""
-        # TODO: Implement conversation manager creation similar to YACBA's factory
-        # This will involve:
-        # 1. Creating appropriate ConversationManager based on conversation_manager_type
-        # 2. Configuring with parameters (window_size, summary_ratio, etc.)
-        # 3. Creating summarization agent if needed for summarizing mode
-        
-        logger.info(f"Setting up conversation manager: {self.config.conversation_manager_type}")
-        
-        if self.config.conversation_manager_type == "null":
-            logger.info("Using null conversation manager (full history preserved)")
-        elif self.config.conversation_manager_type == "sliding_window":
-            logger.info(f"Using sliding window (size: {self.config.sliding_window_size}, "
-                       f"truncate: {self.config.should_truncate_results})")
-        elif self.config.conversation_manager_type == "summarizing":
-            logger.info(f"Using summarizing (ratio: {self.config.summary_ratio}, "
-                       f"preserve: {self.config.preserve_recent_messages})")
-            if self.config.summarization_model:
-                logger.info(f"Will create summarization agent with model: {self.config.summarization_model}")
-        
-        self._conversation_manager = None  # Placeholder - will be actual ConversationManager instance
-    
-    async def _setup_agent(self) -> None:
-        """
-        Setup the strands-agents Agent with loaded tools, conversation manager, and DelegatingSession.
-        
-        The Agent receives the tools, conversation manager, and session proxy, handling all 
-        tool execution and session management internally. The engine's role is complete once 
-        the Agent is configured.
-        """
-        # TODO: Implement agent setup with strands-agents
-        # This will involve:
-        # 1. Using framework adapter to adapt tool schemas for the LLM provider
-        # 2. Using framework adapter to prepare agent initialization arguments
-        # 3. Creating strands-agents Agent instance with:
-        #    - Model configuration
-        #    - Loaded tools (which Agent will execute, not engine)
-        #    - ConversationManager for context handling
-        #    - DelegatingSession proxy (handles session activation/deactivation)
-        #    - Callback handlers for streaming responses
-        # 4. Initialize the DelegatingSession with the agent
-        
-        logger.info("Setting up strands-agents Agent")
-        if self.config.sessions_home:
-            logger.info(f"DelegatingSession configured with sessions_home: {self.config.sessions_home}")
-        if self._loaded_tools:
-            logger.info(f"Agent will be configured with {len(self._loaded_tools)} tools")
-        if self._conversation_manager:
-            logger.info(f"Agent will use conversation manager: {self.config.conversation_manager_type}")
-        
-        # TODO: Create actual strands-agents Agent and initialize session proxy
-        self._agent = None  # Placeholder - will be strands-agents Agent instance
-        
-        # TODO: Initialize the DelegatingSession with the agent
-        # self._session_manager.initialize(self._agent)
-        # This will activate the session if session_id was provided, or keep it inactive
-    
-    async def _process_with_agent(self, message: str) -> str:
-        """
-        Process message with the strands-agents Agent.
-        
-        The Agent handles all the actual work including:
-        - Tool execution (engine does not execute tools)
-        - LLM communication
-        - Conversation management (context window, summarization, etc.)
-        - Session management via DelegatingSession proxy
-        - Response generation
-        """
-        # TODO: Implement actual agent processing
-        # This will involve:
-        # 1. Calling agent.stream_async() or similar strands-agents method
-        # 2. The Agent will handle tool calls internally if needed
-        # 3. The ConversationManager will handle context management
-        # 4. The DelegatingSession will handle session persistence if active
-        # 5. Return the Agent's response
-        
-        logger.debug("Processing with strands-agents Agent (placeholder)")
-        return f"Echo: {message} (loaded {len(self._loaded_tools)} tools)"
+    def _create_conversation_manager(self) -> ConversationManager:
+        try:
+            manager = ConversationManagerFactory.create_conversation_manager(self.config)
+            return manager
+        except Exception as e:
+            logger.error(f"Failed to create conversation manager: {e}")
+            logger.info("Falling back to null conversation manager")
+            from strands.agent.conversation_manager import NullConversationManager
+            return NullConversationManager()
+
+    def create_agent(self) -> Optional[Agent]:
+        try:
+            model = self.framework_adapter.create_model(self.config.model_string, self.config.model_config)
+            if not model: return None
+
+            # Allow the adapter to make any necessary modifications to the tool schemas.
+
+            agent_args = self.framework_adapter.prepare_agent_args(
+                system_prompt=self.config.system_prompt,
+                messages=self.initial_messages,
+                startup_files_content=self.config.startup_files_content,
+                emulate_system_prompt=self.config.emulate_system_prompt
+            )
+
+            self.agent = WrappedAgent(
+                adapter=self.framework_adapter,
+                agent_id=self.config.agent_id or "yacba_agent",
+                model=model,
+                tools=self.loaded_tools,
+                callback_handler=PrintingCallbackHandler(),
+                session_manager=self.session_manager,
+                conversation_manager=self.conversation_manager,  # Add conversation manager
+                **agent_args
+            )
+
+            return self.agent
+        except Exception as e:
+            logger.error(f"Fatal error initializing the agent: {e}", exc_info=True)
+            return None

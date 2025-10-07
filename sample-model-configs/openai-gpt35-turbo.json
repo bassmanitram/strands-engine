@@ -1,0 +1,12 @@
+{
+  "temperature": 0.9,
+  "max_tokens": 2000,
+  "top_p": 1.0,
+  "frequency_penalty": 0.2,
+  "presence_penalty": 0.6,
+  "stream": true,
+  "logit_bias": {
+    "50256": -100
+  },
+  "user": "example-user-id"
+}

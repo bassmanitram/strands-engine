@@ -12,7 +12,7 @@ from .base_adapter import ToolAdapter
 from .factory import ToolFactory
 from .mcp_adapters import MCPStdIOAdapter, MCPHTTPAdapter
 from .python_adapter import PythonToolAdapter
-from .discovery import discover_tool_configs
+from .loader import load_tool_configs
 
 __all__ = [
     'ToolAdapter', 
@@ -20,5 +20,5 @@ __all__ = [
     'MCPStdIOAdapter', 
     'MCPHTTPAdapter', 
     'PythonToolAdapter',
-    'discover_tool_configs'
+    'load_tool_configs'
 ]

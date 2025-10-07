@@ -1,0 +1,12 @@
+{
+  "temperature": 0.8,
+  "max_tokens": 3000,
+  "top_p": 0.85,
+  "stop_sequences": ["User:", "Bot:"],
+  "textGenerationConfig": {
+    "maxTokenCount": 3000,
+    "stopSequences": ["User:", "Bot:"],
+    "temperature": 0.8,
+    "topP": 0.85
+  }
+}

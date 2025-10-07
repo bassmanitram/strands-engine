@@ -1,0 +1,11 @@
+{
+  "temperature": 0.5,
+  "max_tokens": 2048,
+  "top_p": 0.9,
+  "max_gen_len": 2048,
+  "textGenerationConfig": {
+    "maxTokenCount": 2048,
+    "temperature": 0.5,
+    "topP": 0.9
+  }
+}

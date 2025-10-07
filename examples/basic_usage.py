@@ -10,7 +10,7 @@ import asyncio
 from pathlib import Path
 import tempfile
 
-from strands_engine import Engine, EngineConfig
+from strands_engine import AgentFactory, EngineConfig
 
 
 async def basic_example():
@@ -25,7 +25,7 @@ async def basic_example():
     )
     
     # Create and initialize engine  
-    engine = Engine(config)
+    engine = AgentFactory(config)
     print(f"Created engine with model: {config.model}")
     
     success = await engine.initialize()
@@ -70,7 +70,7 @@ async def session_example():
             session_id="demo_conversation_123"
         )
         
-        engine = Engine(config)
+        engine = AgentFactory(config)
         print(f"Sessions managed by strands-agents in: {config.sessions_home}")
         print(f"Session ID: {config.session_id}")
         
@@ -108,7 +108,7 @@ async def file_upload_example():
         ]
     )
     
-    engine = Engine(config)
+    engine = AgentFactory(config)
     success = await engine.initialize()
     
     if not success:
@@ -149,7 +149,7 @@ async def tool_example():
         tool_config_paths=[tool_config]  # Engine loads tools from config files
     )
     
-    engine = Engine(config)
+    engine = AgentFactory(config)
     success = await engine.initialize()  # Loads tools and configures Agent
     
     if not success:
@@ -207,7 +207,7 @@ async def comprehensive_example():
             max_context_length=4000
         )
         
-        engine = Engine(config)
+        engine = AgentFactory(config)
         print(f"Configuration:")
         print(f"  Model: {config.model}")
         print(f"  Sessions managed by strands-agents in: {config.sessions_home}")

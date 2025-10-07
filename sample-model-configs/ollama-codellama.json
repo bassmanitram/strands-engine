@@ -1,0 +1,10 @@
+{
+  "host": "http://localhost:11434",
+  "temperature": 0.1,
+  "max_tokens": 4000,
+  "top_p": 0.95,
+  "repeat_penalty": 1.05,
+  "stop": ["```", "</code>"],
+  "num_predict": 4000,
+  "num_ctx": 8192
+}

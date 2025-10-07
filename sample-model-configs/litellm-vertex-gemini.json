@@ -1,0 +1,14 @@
+{
+  "temperature": 0.6,
+  "max_tokens": 2048,
+  "top_p": 0.8,
+  "top_k": 40,
+  "vertex_project": "your-gcp-project-id",
+  "vertex_location": "us-central1",
+  "safety_settings": [
+    {
+      "category": "HARM_CATEGORY_DANGEROUS_CONTENT",
+      "threshold": "BLOCK_MEDIUM_AND_ABOVE"
+    }
+  ]
+}

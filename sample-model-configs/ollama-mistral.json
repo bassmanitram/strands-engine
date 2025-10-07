@@ -1,0 +1,14 @@
+{
+  "host": "http://localhost:11434",
+  "temperature": 0.4,
+  "max_tokens": 2048,
+  "top_p": 0.9,
+  "top_k": 50,
+  "repeat_penalty": 1.1,
+  "repeat_last_n": 64,
+  "num_predict": 2048,
+  "num_ctx": 4096,
+  "num_batch": 8,
+  "num_gpu": 1,
+  "stop": ["[INST]", "[/INST]"]
+}

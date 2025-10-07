@@ -1,0 +1,8 @@
+{
+  "temperature": 0.7,
+  "max_tokens": 1024,
+  "top_p": 0.9,
+  "replicate_api_token": "your-replicate-token",
+  "stream": true,
+  "custom_llm_provider": "replicate"
+}
