@@ -131,7 +131,7 @@ class EngineCallbackHandler(PrintingCallbackHandler):
 
         # Display response content
         if data:
-            print(data, end="" if not complete else "\\n")
+            print(data, end="" if not complete else "\n")
 
         # Handle tool use display if enabled
         if self.show_tool_use:
@@ -143,10 +143,10 @@ class EngineCallbackHandler(PrintingCallbackHandler):
 
             if "messageStop" in event and self.in_tool_use:
                 if self.previous_tool_use:
-                    print(f"\\nTool #{self.tool_count}: {self.previous_tool_use.get('name', 'Unknown')}")
+                    print(f"\nTool #{self.tool_count}: {self.previous_tool_use.get('name', 'Unknown')}")
                     self.previous_tool_use = None
                 self.in_tool_use = False
 
         # Handle completion formatting
         if complete and data:
-            print("\\n")
+            print("\n")

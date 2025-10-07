@@ -101,6 +101,24 @@ class AgentFactory:
 
         logger.debug(f"Engine created with config: {config}")
     
+    def _determine_framework_from_model(self, model_string: str) -> str:
+        """
+        Determine the framework name from the model string.
+        
+        Args:
+            model_string: Model identifier string
+            
+        Returns:
+            str: Framework name for adapter loading
+        """
+        if ":" in model_string:
+            # Format like "anthropic:claude-3-5-sonnet", "ollama:llama2", etc.
+            framework = model_string.split(":", 1)[0]
+            return framework.lower()
+        else:
+            # Default to OpenAI for simple model names like "gpt-4o"
+            return "openai"
+    
     async def initialize(self) -> bool:
         """
         Perform async initialization of the agent factory.
@@ -178,7 +196,9 @@ class AgentFactory:
         
         all_loaded_tools = tool_factory.create_tools(tool_configs)
         self._loaded_tools = all_loaded_tools
-        self.loaded_tools = self.framework_adapter.adapt_tools(self.loaded_tools)
+        # Adapt tools for the specific framework after adapter is set up
+        if self._framework_adapter:
+            self._loaded_tools = self._framework_adapter.adapt_tools(self._loaded_tools)
 
     async def _load_initial_files(self) -> None:
         """
@@ -208,7 +228,8 @@ class AgentFactory:
             ValueError: If the framework is not supported
             RuntimeError: If adapter initialization fails
         """
-        self._framework_adapter = load_framework_adapter(self.framework_name)()
+        framework_name = self._determine_framework_from_model(self.config.model)
+        self._framework_adapter = load_framework_adapter(framework_name)
     
     def _setup_conversation_manager(self) -> None:
         """
@@ -263,27 +284,34 @@ class AgentFactory:
             This method should only be called after successful initialization.
             The agent is ready for immediate use after creation.
         """
+        if not self._initialized:
+            logger.error("Cannot create agent: factory not initialized. Call initialize() first.")
+            return None
+            
+        if not self._framework_adapter:
+            logger.error("Cannot create agent: no framework adapter available")
+            return None
+            
         try:
-            model = self.framework_adapter.create_model(self.config.model_string, self.config.model_config)
+            model = self._framework_adapter.load_model(self.config.model, self.config.model_config)
             if not model: 
                 return None
 
             # Allow the adapter to make any necessary modifications to the tool schemas
-            agent_args = self.framework_adapter.prepare_agent_args(
+            agent_args = self._framework_adapter.prepare_agent_args(
                 system_prompt=self.config.system_prompt,
-                messages=self.initial_messages,
-                startup_files_content=self.config.startup_files_content,
+                startup_files_content=getattr(self, 'startup_files_content', None),
                 emulate_system_prompt=self.config.emulate_system_prompt
             )
 
             return WrappedAgent(
-                adapter=self.framework_adapter,
-                agent_id=self.config.agent_id or "strands_engine_agent",
+                adapter=self._framework_adapter,
+                agent_id="strands_engine_agent",
                 model=model,
-                tools=self.loaded_tools,
-                callback_handler=PrintingCallbackHandler(),
-                session_manager=self.session_manager,
-                conversation_manager=self.conversation_manager,
+                tools=self._loaded_tools,
+                callback_handler=self._callback_handler,
+                session_manager=self._session_manager,
+                conversation_manager=self._conversation_manager,
                 **agent_args
             )
         except Exception as e:

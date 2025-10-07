@@ -199,7 +199,7 @@ class ConversationManagerFactory:
             if not adapter:
                 return None
             
-            model = adapter.create_model(model_id, model_config={})
+            model = adapter.load_model(model_id, model_config={})
 
             if not model:
                 logger.warning("Failed to create summarization model: "

@@ -125,7 +125,7 @@ def is_likely_text_file(file_path: PathLike) -> bool:
             chunk = f.read(1024)  # Read first 1KB
 
         # Check for null bytes (common in binary files)
-        if b'\\x00' in chunk:
+        if b'\x00' in chunk:
             return False
 
         # Check if most bytes are printable ASCII or common UTF-8

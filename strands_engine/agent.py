@@ -121,7 +121,7 @@ class WrappedAgent(Agent):
         except Exception as e:
             logger.error(f"Unexpected error in agent stream: {e}")
             print(
-                f"\\nAn unexpected error occurred while generating the response: {e}",
+                f"\nAn unexpected error occurred while generating the response: {e}",
                 file=sys.stderr,
             )
             return False
