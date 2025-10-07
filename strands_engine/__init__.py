@@ -15,8 +15,6 @@ compatibility with strands-agents' core architecture patterns.
 Core Components:
     - EngineConfig: Configuration dataclass for agent parameters
     - AgentFactory: Main factory class for creating configured agents
-    - ModelLoader: Cross-framework model loading utilities
-    - FrameworkAdapter: Framework-specific adaptation layer
 
 Example:
     Basic agent creation::
@@ -35,17 +33,10 @@ Example:
 
 from .config import EngineConfig
 from .engine import AgentFactory  
-from .framework import ModelLoader, FrameworkAdapter, DefaultAdapter, LiteLLMAdapter, BedrockAdapter, OllamaAdapter
 
 __version__ = "0.1.0"
 
 __all__ = [
     "EngineConfig",
     "AgentFactory",
-    "ModelLoader",
-    "FrameworkAdapter", 
-    "DefaultAdapter",
-    "LiteLLMAdapter",
-    "BedrockAdapter",
-    "OllamaAdapter"
 ]

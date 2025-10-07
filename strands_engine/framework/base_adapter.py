@@ -23,12 +23,10 @@ The adapters follow a consistent pattern for:
 """
 
 from abc import ABC, abstractmethod
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional
 from strands.models import Model
 
 from loguru import logger
-
-from strands_engine.framework.litellm_adapter import LiteLLMAdapter
 
 from ..ptypes import Tool, Message
 import importlib
