@@ -148,7 +148,7 @@ class LiteLLMAdapter(FrameworkAdapter):
         # Create and return the LiteLLM model
         return LiteLLMModel(client_args=client_args, model_config=model_config)
 
-    def adapt_tools(self, tools: List[Tool], model_string: str) -> List[Tool]:
+    def adapt_tools(self, tools: List[Tool]) -> List[Tool]:
         """
         Adapt tool schemas for LiteLLM provider compatibility.
         
@@ -164,7 +164,6 @@ class LiteLLMAdapter(FrameworkAdapter):
         
         Args:
             tools: List of tool objects to adapt
-            model_string: Model string (used for future provider-specific adaptations)
             
         Returns:
             List[Tool]: Tools with schemas adapted for LiteLLM compatibility

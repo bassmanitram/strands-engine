@@ -102,7 +102,7 @@ class FrameworkAdapter(ABC):
         pass
 
     @abstractmethod
-    def adapt_tools(self, tools: List[Tool], model_string: str) -> List[Tool]:
+    def adapt_tools(self, tools: List[Tool]) -> List[Tool]:
         """
         Adapt tools for the specific framework.
         
@@ -118,7 +118,6 @@ class FrameworkAdapter(ABC):
         
         Args:
             tools: List of tool objects loaded by the engine
-            model_string: Model string to determine adaptations needed
             
         Returns:
             List[Tool]: List of framework-adapted tool objects

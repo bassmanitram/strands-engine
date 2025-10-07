@@ -18,7 +18,7 @@ of the underlying strands-agents ecosystem.
 """
 
 from contextlib import ExitStack
-from typing import List, Optional
+from typing import List, Optional, Tuple
 
 from loguru import logger
 from strands import Agent
@@ -91,6 +91,9 @@ class AgentFactory:
         self._exit_stack = ExitStack()  # For resource management
         self._tool_factory: Optional[ToolFactory] = None
         
+        # Parse model string into framework and model parts during initialization
+        self._framework_name, self._model_id = self._parse_model_string(config.model)
+        
         # Create DelegatingSession proxy - will be inactive if no session_id provided
         self._session_manager = DelegatingSession(
             session_name=config.session_id,
@@ -100,24 +103,32 @@ class AgentFactory:
         self._callback_handler = PrintingCallbackHandler()
 
         logger.debug(f"Engine created with config: {config}")
+        logger.debug(f"Parsed model string '{config.model}' -> framework='{self._framework_name}', model_id='{self._model_id}'")
     
-    def _determine_framework_from_model(self, model_string: str) -> str:
+    def _parse_model_string(self, model_string: str) -> Tuple[str, str]:
         """
-        Determine the framework name from the model string.
+        Parse model string into framework and model ID parts.
+        
+        Handles various model string formats:
+        - "gpt-4o" -> ("openai", "gpt-4o")
+        - "litellm:gemini/gemini-2.5-flash" -> ("litellm", "gemini/gemini-2.5-flash") 
+        - "anthropic:claude-3-5-sonnet" -> ("anthropic", "claude-3-5-sonnet")
+        - "litellm:" -> ("litellm", "")  # Empty model ID is allowed
+        - "ollama:llama2" -> ("ollama", "llama2")
         
         Args:
-            model_string: Model identifier string
+            model_string: Model identifier string from configuration
             
         Returns:
-            str: Framework name for adapter loading
+            Tuple[str, str]: (framework_name, model_id) where model_id can be empty
         """
         if ":" in model_string:
-            # Format like "anthropic:claude-3-5-sonnet", "ollama:llama2", etc.
-            framework = model_string.split(":", 1)[0]
-            return framework.lower()
+            # Format like "framework:model_id" or "framework:" (empty model_id)
+            framework, model_id = model_string.split(":", 1)
+            return framework.lower(), model_id
         else:
             # Default to OpenAI for simple model names like "gpt-4o"
-            return "openai"
+            return "litellm", model_id
     
     async def initialize(self) -> bool:
         """
@@ -196,9 +207,7 @@ class AgentFactory:
         
         all_loaded_tools = tool_factory.create_tools(tool_configs)
         self._loaded_tools = all_loaded_tools
-        # Adapt tools for the specific framework after adapter is set up
-        if self._framework_adapter:
-            self._loaded_tools = self._framework_adapter.adapt_tools(self._loaded_tools)
+        self._loaded_tools = self._framework_adapter.adapt_tools(self._loaded_tools)
 
     async def _load_initial_files(self) -> None:
         """
@@ -220,16 +229,17 @@ class AgentFactory:
         """
         Initialize the framework adapter for the configured model.
         
-        Determines the appropriate framework adapter based on the model string
-        in the configuration and creates an instance. The adapter handles
-        framework-specific model loading, tool adaptation, and configuration.
+        Uses the parsed framework name to load the appropriate adapter.
+        The adapter handles framework-specific model loading, tool adaptation, 
+        and configuration.
         
         Raises:
             ValueError: If the framework is not supported
             RuntimeError: If adapter initialization fails
         """
-        framework_name = self._determine_framework_from_model(self.config.model)
-        self._framework_adapter = load_framework_adapter(framework_name)
+        self._framework_adapter = load_framework_adapter(self._framework_name)
+        if not self._framework_adapter:
+            raise ValueError(f"Unsupported framework: {self._framework_name}")
     
     def _setup_conversation_manager(self) -> None:
         """
@@ -293,7 +303,9 @@ class AgentFactory:
             return None
             
         try:
-            model = self._framework_adapter.load_model(self.config.model, self.config.model_config)
+            # Pass the parsed model_id (without framework prefix) to the adapter
+            # The model_id can be empty string if the format was "framework:"
+            model = self._framework_adapter.load_model(self._model_id, self.config.model_config)
             if not model: 
                 return None
 

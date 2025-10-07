@@ -73,7 +73,7 @@ class AnthropicAdapter(FrameworkAdapter):
         """
         return "anthropic"
 
-    def adapt_tools(self, tools: List[Tool], model_string: str) -> List[Tool]:
+    def adapt_tools(self, tools: List[Tool]) -> List[Tool]:
         """
         Adapt tools for Anthropic function calling compatibility.
         
@@ -83,7 +83,6 @@ class AnthropicAdapter(FrameworkAdapter):
         
         Args:
             tools: List of tool objects to adapt
-            model_string: Model string (used for model-specific adaptations)
             
         Returns:
             List[Tool]: Tools adapted for Anthropic compatibility
