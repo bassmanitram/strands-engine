@@ -1,5 +1,5 @@
 """
-Core engine implementation for strands_engine.
+Core engine implementation for strands_agent_factory.
 
 This module provides the AgentFactory class, which serves as the main entry point
 for creating and managing strands-agents Agent instances. The factory handles the
@@ -23,13 +23,13 @@ from typing import List, Optional, Tuple
 from loguru import logger
 from strands import Agent
 
-from strands_engine.agent import WrappedAgent
-from strands_engine.conversation import ConversationManagerFactory
-from strands_engine.framework.base_adapter import load_framework_adapter
+from strands_agent_factory.agent import WrappedAgent
+from strands_agent_factory.conversation import ConversationManagerFactory
+from strands_agent_factory.framework.base_adapter import load_framework_adapter
 from strands.agent.conversation_manager import ConversationManager
 from strands.handlers.callback_handler import PrintingCallbackHandler
 
-from strands_engine.utils import files_to_content_blocks
+from strands_agent_factory.utils import files_to_content_blocks
 
 from .config import EngineConfig
 from .ptypes import Tool, FrameworkAdapter
@@ -81,10 +81,12 @@ class AgentFactory:
         Args:
             config: EngineConfig instance with agent parameters
         """
+        logger.debug(f"AgentFactory.__init__ called with config: {config}")
+        
         self.config = config
         self._initialized = False
         self._agent = None  # strands-agents Agent instance
-        self._loaded_tools: List[Tool] = []  # Tools loaded for Agent, not executed by engine
+        self._loaded_tools: List[Tool] = []  # Tools loaded for Agent, not executed by factory
         self._framework_adapter: Optional[FrameworkAdapter] = None
         self._callback_handler : Optional[PrintingCallbackHandler] = None
         self._conversation_manager = None  # strands-agents ConversationManager
@@ -102,7 +104,7 @@ class AgentFactory:
 
         self._callback_handler = PrintingCallbackHandler()
 
-        logger.debug(f"Engine created with config: {config}")
+        logger.debug(f"Factory created with config: {config}")
         logger.debug(f"Parsed model string '{config.model}' -> framework='{self._framework_name}', model_id='{self._model_id}'")
     
     def _parse_model_string(self, model_string: str) -> Tuple[str, str]:
@@ -122,13 +124,18 @@ class AgentFactory:
         Returns:
             Tuple[str, str]: (framework_name, model_id) where model_id can be empty
         """
+        logger.debug(f"_parse_model_string called with model_string: '{model_string}'")
+        
         if ":" in model_string:
             # Format like "framework:model_id" or "framework:" (empty model_id)
             framework, model_id = model_string.split(":", 1)
-            return framework.lower(), model_id
+            result = (framework.lower(), model_id)
         else:
             # Default to OpenAI for simple model names like "gpt-4o"
-            return "litellm", model_id
+            result = ("openai", model_string)
+        
+        logger.debug(f"_parse_model_string returning: {result}")
+        return result
     
     async def initialize(self) -> bool:
         """
@@ -145,12 +152,14 @@ class AgentFactory:
             This method is idempotent - calling it multiple times will not
             cause problems, though subsequent calls will return early.
         """
+        logger.debug(f"initialize called, _initialized={self._initialized}")
+        
         if self._initialized:
-            logger.warning("Engine already initialized")
+            logger.warning("Factory already initialized")
             return True
             
         try:
-            logger.info("Initializing strands engine...")
+            logger.info("Initializing strands agent factory...")
             
             # 1. Initialize framework adapter
             self._setup_framework_adapter()
@@ -165,10 +174,11 @@ class AgentFactory:
             self._setup_conversation_manager()
             
             self._initialized = True
+            logger.debug("initialize completed successfully")
             return True
             
         except Exception as e:
-            logger.error(f"Engine initialization failed: {e}")
+            logger.error(f"Factory initialization failed: {e}")
             return False
 
     async def _load_tools(self) -> None:
@@ -186,10 +196,13 @@ class AgentFactory:
         - Error handling and reporting
         
         Note:
-            The engine loads tools for Agent configuration but does not execute
+            The factory loads tools for Agent configuration but does not execute
             them directly. All tool execution is delegated to strands-agents.
         """
+        logger.debug(f"_load_tools called with tool_config_paths: {self.config.tool_config_paths}")
+        
         if not self.config.tool_config_paths:
+            logger.debug("No tool config paths provided, skipping tool loading")
             return
             
         logger.debug(f"Loading tools from {len(self.config.tool_config_paths)} config paths")
@@ -207,7 +220,13 @@ class AgentFactory:
         
         all_loaded_tools = tool_factory.create_tools(tool_configs)
         self._loaded_tools = all_loaded_tools
-        self._loaded_tools = self._framework_adapter.adapt_tools(self._loaded_tools)
+        logger.debug(f"Loaded {len(self._loaded_tools)} tools")
+        
+        # Adapt tools for the specific framework after adapter is set up
+        if self._framework_adapter:
+            logger.debug(f"Adapting tools for framework: {self._framework_name}")
+            self._loaded_tools = self._framework_adapter.adapt_tools(self._loaded_tools, self._model_id)
+            logger.debug(f"Tool adaptation completed, {len(self._loaded_tools)} tools after adaptation")
 
     async def _load_initial_files(self) -> None:
         """
@@ -220,10 +239,14 @@ class AgentFactory:
         The processed files are stored as startup content that gets included
         in the agent's initial context.
         """
+        logger.debug(f"_load_initial_files called with file_paths: {self.config.file_paths}")
+        
         if not self.config.file_paths:
+            logger.debug("No file paths provided, skipping file loading")
             return
         
         self.startup_files_content = files_to_content_blocks(self.config.file_paths)
+        logger.debug(f"Loaded {len(self.startup_files_content) if self.startup_files_content else 0} startup files")
     
     def _setup_framework_adapter(self) -> None:
         """
@@ -237,9 +260,14 @@ class AgentFactory:
             ValueError: If the framework is not supported
             RuntimeError: If adapter initialization fails
         """
+        logger.debug(f"_setup_framework_adapter called with framework_name: '{self._framework_name}'")
+        
         self._framework_adapter = load_framework_adapter(self._framework_name)
         if not self._framework_adapter:
+            logger.error(f"Failed to load framework adapter for: {self._framework_name}")
             raise ValueError(f"Unsupported framework: {self._framework_name}")
+        
+        logger.debug(f"Framework adapter loaded successfully: {type(self._framework_adapter).__name__}")
     
     def _setup_conversation_manager(self) -> None:
         """
@@ -257,13 +285,17 @@ class AgentFactory:
             a ConversationManager is always available, even if configuration
             is invalid.
         """
+        logger.debug(f"_setup_conversation_manager called with conversation_manager_type: {self.config.conversation_manager_type}")
+        
         try:
             self._conversation_manager = ConversationManagerFactory.create_conversation_manager(self.config)
+            logger.debug(f"Conversation manager created: {type(self._conversation_manager).__name__}")
         except Exception as e:
             logger.error(f"Failed to create conversation manager: {e}")
             logger.info("Falling back to null conversation manager")
             from strands.agent.conversation_manager import NullConversationManager
             self._conversation_manager = NullConversationManager()
+            logger.debug("Fallback conversation manager created: NullConversationManager")
 
     def create_agent(self) -> Optional[Agent]:
         """
@@ -294,6 +326,8 @@ class AgentFactory:
             This method should only be called after successful initialization.
             The agent is ready for immediate use after creation.
         """
+        logger.debug(f"create_agent called, _initialized={self._initialized}, _framework_adapter={self._framework_adapter is not None}")
+        
         if not self._initialized:
             logger.error("Cannot create agent: factory not initialized. Call initialize() first.")
             return None
@@ -305,20 +339,27 @@ class AgentFactory:
         try:
             # Pass the parsed model_id (without framework prefix) to the adapter
             # The model_id can be empty string if the format was "framework:"
+            logger.debug(f"Loading model with model_id='{self._model_id}', model_config={self.config.model_config}")
             model = self._framework_adapter.load_model(self._model_id, self.config.model_config)
             if not model: 
+                logger.error("Framework adapter returned None for model")
                 return None
+            
+            logger.debug(f"Model loaded successfully: {type(model).__name__}")
 
             # Allow the adapter to make any necessary modifications to the tool schemas
+            logger.debug(f"Preparing agent args with system_prompt={self.config.system_prompt is not None}, emulate_system_prompt={self.config.emulate_system_prompt}")
             agent_args = self._framework_adapter.prepare_agent_args(
                 system_prompt=self.config.system_prompt,
                 startup_files_content=getattr(self, 'startup_files_content', None),
                 emulate_system_prompt=self.config.emulate_system_prompt
             )
+            logger.debug(f"Agent args prepared: {list(agent_args.keys())}")
 
-            return WrappedAgent(
+            logger.debug(f"Creating WrappedAgent with {len(self._loaded_tools)} tools")
+            wrapped_agent = WrappedAgent(
                 adapter=self._framework_adapter,
-                agent_id="strands_engine_agent",
+                agent_id="strands_agent_factory_agent",
                 model=model,
                 tools=self._loaded_tools,
                 callback_handler=self._callback_handler,
@@ -326,6 +367,9 @@ class AgentFactory:
                 conversation_manager=self._conversation_manager,
                 **agent_args
             )
+            logger.debug(f"WrappedAgent created successfully: {type(wrapped_agent).__name__}")
+            return wrapped_agent
+            
         except Exception as e:
             logger.error(f"Fatal error initializing the agent: {e}", exc_info=True)
             return None

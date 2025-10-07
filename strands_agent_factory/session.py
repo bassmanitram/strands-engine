@@ -1,5 +1,5 @@
 """
-Session management proxy for strands_engine.
+Session management proxy for strands_agent_factory.
 
 This module provides the DelegatingSession class, which implements a proxy pattern
 for session management that allows dynamic session switching while maintaining

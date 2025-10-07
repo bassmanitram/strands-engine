@@ -1,7 +1,7 @@
 """
-Anthropic framework adapter for strands_engine.
+Anthropic framework adapter for strands_agent_factory.
 
-This module provides the AnthropicAdapter class, which enables strands_engine
+This module provides the AnthropicAdapter class, which enables strands_agent_factory
 to work directly with Anthropic's Claude models via their native API. The
 adapter handles Anthropic-specific model loading, configuration, and tool
 adaptation while maintaining compatibility with strands-agents.

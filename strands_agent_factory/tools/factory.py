@@ -1,8 +1,8 @@
 """
-Tool factory implementation for strands_engine.
+Tool factory implementation for strands_agent_factory.
 
 This module provides the ToolFactory class, which serves as the central coordinator
-for tool discovery, loading, and creation in strands_engine. The factory uses a
+for tool discovery, loading, and creation in strands_agent_factory. The factory uses a
 registry of adapters to support multiple tool types while providing consistent
 error handling and resource management.
 
@@ -24,7 +24,7 @@ from typing import Any, Dict, List, Tuple
 
 from loguru import logger
 
-from strands_engine.utils import load_structured_file
+from strands_agent_factory.utils import load_structured_file
 
 from ..ptypes import PathLike, Tool, ToolConfig, ToolCreationResult, ToolDiscoveryResult
 from .base_adapter import ToolAdapter
@@ -37,7 +37,7 @@ class ToolFactory:
     Centralized factory for tool discovery, loading, and creation.
     
     ToolFactory coordinates the complete tool management lifecycle for
-    strands_engine, from configuration file discovery through tool object
+    strands_agent_factory, from configuration file discovery through tool object
     creation. It uses a registry of tool adapters to support multiple tool
     types while providing consistent error handling and resource management.
     

@@ -1,8 +1,8 @@
 """
-Base adapter interface for tool creation in strands_engine.
+Base adapter interface for tool creation in strands_agent_factory.
 
 This module provides the abstract ToolAdapter base class that defines the
-interface for all tool adapters in strands_engine. Tool adapters are responsible
+interface for all tool adapters in strands_agent_factory. Tool adapters are responsible
 for loading and configuring tools from different sources (MCP servers, Python
 modules, etc.) while maintaining consistent behavior and error handling.
 
@@ -32,7 +32,7 @@ class ToolAdapter(ABC):
     Abstract base class for tool adapters.
     
     ToolAdapter defines the interface that all tool adapters must implement
-    to participate in the strands_engine tool loading system. Adapters are
+    to participate in the strands_agent_factory tool loading system. Adapters are
     responsible for converting tool configurations into tool objects that
     can be used by strands-agents.
     
@@ -43,7 +43,7 @@ class ToolAdapter(ABC):
     - Register cleanup handlers for resource management  
     - Provide detailed success/failure reporting
     
-    The adapter pattern allows strands_engine to support multiple tool
+    The adapter pattern allows strands_agent_factory to support multiple tool
     types through a common interface while encapsulating the complexity
     of each tool source type.
     

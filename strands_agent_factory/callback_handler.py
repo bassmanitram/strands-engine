@@ -1,9 +1,9 @@
 """
-Callback handler implementation for strands_engine.
+Callback handler implementation for strands_agent_factory.
 
 This module provides the EngineCallbackHandler class, which extends the
 strands-agents PrintingCallbackHandler to provide customized output handling
-for strands_engine applications. The handler manages agent output display
+for strands_agent_factory applications. The handler manages agent output display
 without requiring prompt_toolkit dependencies.
 
 The callback handler provides:
@@ -12,7 +12,7 @@ The callback handler provides:
 - Event-driven output handling for streaming responses
 - Graceful handling of reasoning text and tool execution feedback
 
-The handler is designed to work seamlessly with strands_engine's streaming
+The handler is designed to work seamlessly with strands_agent_factory's streaming
 capabilities while providing clear, formatted output for end users.
 """
 
@@ -23,11 +23,11 @@ from strands.handlers.callback_handler import PrintingCallbackHandler
 
 class EngineCallbackHandler(PrintingCallbackHandler):
     """
-    Customized callback handler for strands_engine output management.
+    Customized callback handler for strands_agent_factory output management.
     
     EngineCallbackHandler extends the standard PrintingCallbackHandler to
     provide enhanced output formatting and optional tool usage display for
-    strands_engine applications. It handles the complexity of streaming
+    strands_agent_factory applications. It handles the complexity of streaming
     agent responses while maintaining clean, user-friendly output.
     
     The handler manages:

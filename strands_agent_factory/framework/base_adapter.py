@@ -1,12 +1,12 @@
 """
-Base framework adapter for strands_engine.
+Base framework adapter for strands_agent_factory.
 
 This module provides the abstract base class and loading infrastructure for
-framework adapters that integrate strands_engine with different AI providers
+framework adapters that integrate strands_agent_factory with different AI providers
 and frameworks. Framework adapters handle the specifics of model loading,
 tool adaptation, and provider-specific configuration.
 
-The adapter system allows strands_engine to support multiple AI frameworks
+The adapter system allows strands_agent_factory to support multiple AI frameworks
 (OpenAI, Anthropic, Ollama, Bedrock, etc.) through a common interface while
 handling the unique requirements of each provider.
 
@@ -36,11 +36,11 @@ import importlib
 # ============================================================================
 
 FRAMEWORK_HANDLERS = {
-    "litellm": "strands_engine.framework.litellm_adapter.LiteLLMAdapter",
-    "openai":  "strands_engine.framework.openai_adapter.OpenAIAdapter",
-    "anthropic": "strands_engine.framework.anthropic_adapter.AnthropicAdapter",
-    "bedrock": "strands_engine.framework.bedrock_adapter.BedrockAdapter",
-    "ollama": "strands_engine.framework.ollama_adapter.OllamaAdapter"
+    "litellm": "strands_agent_factory.framework.litellm_adapter.LiteLLMAdapter",
+    "openai":  "strands_agent_factory.framework.openai_adapter.OpenAIAdapter",
+    "anthropic": "strands_agent_factory.framework.anthropic_adapter.AnthropicAdapter",
+    "bedrock": "strands_agent_factory.framework.bedrock_adapter.BedrockAdapter",
+    "ollama": "strands_agent_factory.framework.ollama_adapter.OllamaAdapter"
 }
 """
 Registry mapping framework names to their adapter class paths.
@@ -60,9 +60,9 @@ class FrameworkAdapter(ABC):
     Abstract base class for framework adapters.
     
     Framework adapters provide a standardized interface for integrating
-    strands_engine with different AI providers and frameworks. Each adapter
+    strands_agent_factory with different AI providers and frameworks. Each adapter
     handles the specifics of its target framework while presenting a common
-    interface to the engine.
+    interface to the factory.
     
     Adapters are responsible for:
     - Loading models using framework-specific APIs
@@ -102,7 +102,7 @@ class FrameworkAdapter(ABC):
         pass
 
     @abstractmethod
-    def adapt_tools(self, tools: List[Tool]) -> List[Tool]:
+    def adapt_tools(self, tools: List[Tool], model_string: str) -> List[Tool]:
         """
         Adapt tools for the specific framework.
         
@@ -117,13 +117,14 @@ class FrameworkAdapter(ABC):
         - Adding framework-specific metadata
         
         Args:
-            tools: List of tool objects loaded by the engine
+            tools: List of tool objects loaded by the factory
+            model_string: Model string to determine adaptations needed
             
         Returns:
             List[Tool]: List of framework-adapted tool objects
             
         Note:
-            Tools are loaded by the engine but executed by strands-agents.
+            Tools are loaded by the factory but executed by strands-agents.
             This method only modifies tool metadata and schemas.
         """
         pass
@@ -163,11 +164,14 @@ class FrameworkAdapter(ABC):
             System prompt emulation is used for frameworks that don't support
             system prompts natively. The prompt is prepended to the first user message.
         """
+        logger.debug(f"FrameworkAdapter.prepare_agent_args called with system_prompt={system_prompt is not None}, messages={len(messages) if messages else 0}, startup_files_content={len(startup_files_content) if startup_files_content else 0}, emulate_system_prompt={emulate_system_prompt}, kwargs={list(kwargs.keys())}")
+        
         messages = messages or []
         
         # Combine startup files with existing messages
         if startup_files_content:
             messages = startup_files_content + messages
+            logger.debug(f"Combined startup files with messages, total messages: {len(messages)}")
 
         # Handle system prompt emulation for frameworks that don't support it natively
         if emulate_system_prompt and system_prompt:
@@ -192,12 +196,15 @@ class FrameworkAdapter(ABC):
                 })
 
             agent_args = {"system_prompt": None, "messages": messages}
+            logger.debug("System prompt emulation applied")
         else:
             agent_args = {"system_prompt": system_prompt, "messages": messages}
+            logger.debug("Using system prompt directly")
 
         # Add any additional kwargs
         agent_args.update(kwargs)
         
+        logger.debug(f"prepare_agent_args returning keys: {list(agent_args.keys())}")
         return agent_args
 
     def transform_content(self, content: Any) -> Any:
@@ -218,6 +225,7 @@ class FrameworkAdapter(ABC):
             Override this method if your framework requires specific
             content transformations (e.g., format conversion, filtering).
         """
+        logger.debug(f"FrameworkAdapter.transform_content called with content type: {type(content)}")
         return content
 
     # ========================================================================
@@ -241,8 +249,9 @@ class FrameworkAdapter(ABC):
             
         Note:
             Override this method if your framework requires async setup.
-            Called during engine initialization before model loading.
+            Called during factory initialization before model loading.
         """
+        logger.debug(f"FrameworkAdapter.initialize called with model='{model}', model_config={model_config}")
         return True
 
     def get_model_info(self) -> Dict[str, Any]:
@@ -260,6 +269,7 @@ class FrameworkAdapter(ABC):
             >>> adapter.get_model_info()
             {"framework": "openai", "model": "gpt-4o", "provider": "openai"}
         """
+        logger.debug("FrameworkAdapter.get_model_info called")
         return {"framework": self.framework_name}
     
     @abstractmethod
@@ -331,10 +341,18 @@ def load_framework_adapter(adapter_name: str) -> Optional[FrameworkAdapter]:
         The function uses dynamic importing to avoid loading all framework
         dependencies unless they are actually needed.
     """
+    logger.debug(f"load_framework_adapter called with adapter_name: '{adapter_name}'")
+    
     class_path = FRAMEWORK_HANDLERS.get(adapter_name)
     if class_path:
+        logger.debug(f"Found adapter class path: {class_path}")
         module_path, class_name = class_path.rsplit('.', 1)
+        logger.debug(f"Importing module: {module_path}, class: {class_name}")
         module = importlib.import_module(module_path)
         adapter_class = getattr(module, class_name)
-        return adapter_class()
-    return None
+        adapter = adapter_class()
+        logger.debug(f"Successfully created adapter: {type(adapter).__name__}")
+        return adapter
+    else:
+        logger.error(f"No adapter found for: {adapter_name}")
+        return None

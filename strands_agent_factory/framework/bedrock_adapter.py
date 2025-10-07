@@ -1,5 +1,5 @@
 """
-Bedrock framework adapter for strands_engine.
+Bedrock framework adapter for strands_agent_factory.
 
 This is extracted from YACBA's BedrockAdapter to handle AWS Bedrock-specific formatting.
 """

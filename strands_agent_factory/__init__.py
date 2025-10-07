@@ -1,5 +1,5 @@
 """
-Strands Engine - Factory-based agent creation framework for strands-agents.
+Strands Agent Factory - Factory-based agent creation framework for strands-agents.
 
 This package provides a configuration-driven factory pattern for creating and managing
 strands-agents Agent instances. It serves as a clean abstraction layer that handles:
@@ -9,7 +9,7 @@ strands-agents Agent instances. It serves as a clean abstraction layer that hand
 - Session persistence and conversation management
 - Framework-specific adaptations
 
-The engine is designed to be embedded in larger applications while maintaining
+The factory is designed to be embedded in larger applications while maintaining
 compatibility with strands-agents' core architecture patterns.
 
 Core Components:
@@ -19,7 +19,7 @@ Core Components:
 Example:
     Basic agent creation::
 
-        from strands_engine import EngineConfig, AgentFactory
+        from strands_agent_factory import EngineConfig, AgentFactory
         
         config = EngineConfig(
             model="gpt-4o",

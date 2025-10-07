@@ -1,5 +1,5 @@
 """
-Python tool adapter for strands_engine.
+Python tool adapter for strands_agent_factory.
 
 This module provides the PythonToolAdapter class, which enables loading and
 configuring Python functions as tools for strands-agents to execute. The

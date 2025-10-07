@@ -1,7 +1,7 @@
 """
-Configuration management for strands_engine.
+Configuration management for strands_agent_factory.
 
-This module provides the main configuration dataclass for the strands_engine
+This module provides the main configuration dataclass for the strands_agent_factory
 package. EngineConfig consolidates all the configuration parameters needed
 to create and manage strands-agents Agent instances.
 
@@ -43,7 +43,7 @@ Type for conversation manager strategies.
 @dataclass
 class EngineConfig:
     """
-    Comprehensive configuration for strands_engine agent creation.
+    Comprehensive configuration for strands_agent_factory agent creation.
     
     This configuration class consolidates all parameters needed to create
     and manage a strands-agents Agent instance. It provides a clean interface

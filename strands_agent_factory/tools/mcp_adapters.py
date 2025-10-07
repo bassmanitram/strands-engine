@@ -1,5 +1,5 @@
 """
-Model Context Protocol (MCP) tool adapters for strands_engine.
+Model Context Protocol (MCP) tool adapters for strands_agent_factory.
 
 This module provides adapters for connecting to MCP servers and loading their
 tools for use by strands-agents. MCP is a protocol that enables AI agents to

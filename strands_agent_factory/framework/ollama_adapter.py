@@ -1,7 +1,7 @@
 """
-Ollama framework adapter for strands_engine.
+Ollama framework adapter for strands_agent_factory.
 
-This module provides the OllamaAdapter class, which enables strands_engine
+This module provides the OllamaAdapter class, which enables strands_agent_factory
 to work with Ollama for local model serving. Ollama provides a simple API
 for running various open-source language models locally, making it ideal
 for development, testing, and scenarios requiring data privacy.

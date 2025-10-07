@@ -1,7 +1,7 @@
 """
-Utility functions for strands_engine operations.
+Utility functions for strands_agent_factory operations.
 
-This module provides common utility functions used throughout the strands_engine
+This module provides common utility functions used throughout the strands_agent_factory
 package, including file processing, content handling, MIME type detection,
 and configuration parsing utilities.
 
@@ -26,7 +26,7 @@ from typing import Any, Dict, List, Optional, Union
 from loguru import logger
 import yaml
 
-from strands_engine.ptypes import PathLike
+from strands_agent_factory.ptypes import PathLike
 
 # ============================================================================
 # Constants

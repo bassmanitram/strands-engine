@@ -1,7 +1,7 @@
 """
-OpenAI framework adapter for strands_engine.
+OpenAI framework adapter for strands_agent_factory.
 
-This module provides the OpenAIAdapter class, which enables strands_engine
+This module provides the OpenAIAdapter class, which enables strands_agent_factory
 to work directly with OpenAI's API services. The adapter handles OpenAI-specific
 model loading, configuration, and tool adaptation while maintaining compatibility
 with the strands-agents ecosystem.

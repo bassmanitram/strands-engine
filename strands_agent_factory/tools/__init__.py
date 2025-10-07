@@ -1,12 +1,12 @@
 """
-Tool management system for strands_engine.
+Tool management system for strands_agent_factory.
 
 This package provides comprehensive tool loading, configuration, and lifecycle
-management for strands_engine. It supports multiple tool types and sources
+management for strands_agent_factory. It supports multiple tool types and sources
 while maintaining compatibility with the strands-agents execution environment.
 
 The tool system is designed around a clear separation of concerns:
-- strands_engine: Discovers, loads, and configures tools
+- strands_agent_factory: Discovers, loads, and configures tools
 - strands-agents: Executes tools and manages their lifecycle
 
 Supported Tool Types:
@@ -30,14 +30,14 @@ The tool system provides:
 Example:
     Basic tool factory usage::
     
-        from strands_engine.tools import ToolFactory
+        from strands_agent_factory.tools import ToolFactory
         
         factory = ToolFactory()
         configs, result = factory.load_tool_configs(["/path/to/tools/"])
         tools = factory.create_tools(configs)
 
 Note:
-    Tools are loaded and configured by strands_engine but executed entirely
+    Tools are loaded and configured by strands_agent_factory but executed entirely
     by strands-agents. This separation ensures clean architecture boundaries
     while providing flexibility in tool sources and types.
 """

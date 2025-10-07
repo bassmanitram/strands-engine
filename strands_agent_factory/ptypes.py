@@ -1,8 +1,8 @@
 """
-Type definitions and protocols for strands_engine.
+Type definitions and protocols for strands_agent_factory.
 
 This module provides the core type definitions, protocols, and data structures used
-throughout the strands_engine package. It defines interfaces for tools, framework
+throughout the strands_agent_factory package. It defines interfaces for tools, framework
 adapters, and configuration objects while maintaining compatibility with strands-agents.
 
 The types are organized into several categories:
@@ -187,7 +187,7 @@ class FrameworkAdapter(Protocol):
     """
     Protocol for framework-specific adapters.
     
-    Framework adapters handle the integration between strands_engine and
+    Framework adapters handle the integration between strands_agent_factory and
     different AI provider frameworks (OpenAI, Anthropic, etc.). They manage
     model loading, tool adaptation, and framework-specific configuration.
     

@@ -1,7 +1,7 @@
 """
-LiteLLM framework adapter for strands_engine.
+LiteLLM framework adapter for strands_agent_factory.
 
-This module provides the LiteLLMAdapter class, which enables strands_engine
+This module provides the LiteLLMAdapter class, which enables strands_agent_factory
 to work with LiteLLM's unified interface to multiple AI providers. LiteLLM
 acts as a proxy layer that provides consistent APIs across different AI
 providers (OpenAI, Anthropic, Google, Azure, etc.).
@@ -87,6 +87,7 @@ class LiteLLMAdapter(FrameworkAdapter):
         Returns:
             str: Framework identifier "litellm" for logging and debugging
         """
+        logger.debug("LiteLLMAdapter.framework_name called")
         return "litellm"
 
     def load_model(self, model_name: Optional[str] = None, model_config: Optional[Dict[str, Any]] = None) -> LiteLLMModel:
@@ -136,19 +137,42 @@ class LiteLLMAdapter(FrameworkAdapter):
             client arguments. Client arguments are provider-specific and
             passed to the underlying provider's client constructor.
         """
-        model_config = model_config or {}
+        logger.debug(f"LiteLLMAdapter.load_model called with model_name='{model_name}', model_config={model_config}")
         
-        # Set model identifier if provided
+        model_config = model_config or {}
+        logger.debug(f"Using model_config: {model_config}")
+        
+        # Set model identifier if provided - this must be at the top level for strands-agents
         if model_name:
             model_config["model_id"] = model_name
+            logger.debug(f"Set model_config['model_id'] to '{model_name}' at top level")
             
         # Extract client-specific arguments
         client_args = model_config.pop("client_args", None)
+        logger.debug(f"Extracted client_args: {client_args}")
+        logger.debug(f"Final model_config after client_args extraction: {model_config}")
         
-        # Create and return the LiteLLM model
-        return LiteLLMModel(client_args=client_args, model_config=model_config)
+        # Create the LiteLLM model - pass model_config directly, not nested
+        # The LiteLLMModel constructor expects the config to be passed as model_config parameter
+        # but strands-agents expects model_id to be accessible at the top level of model.config
+        logger.debug(f"Creating LiteLLMModel with client_args={client_args}, model_config={model_config}")
+        model = LiteLLMModel(client_args=client_args, model_config=model_config)
+        
+        # Verify the model was created with the correct structure
+        logger.debug(f"LiteLLMModel created, config structure: {model.config}")
+        
+        # Check if model_id is accessible at the top level (what strands-agents expects)
+        if 'model_id' not in model.config and 'model_config' in model.config:
+            # The model_id got nested, we need to flatten it
+            if 'model_id' in model.config['model_config']:
+                logger.debug("model_id is nested, flattening for strands-agents compatibility")
+                model.config['model_id'] = model.config['model_config']['model_id']
+                logger.debug(f"Flattened config: {model.config}")
+        
+        logger.debug(f"LiteLLMModel created successfully: {type(model).__name__}")
+        return model
 
-    def adapt_tools(self, tools: List[Tool]) -> List[Tool]:
+    def adapt_tools(self, tools: List[Tool], model_string: str) -> List[Tool]:
         """
         Adapt tool schemas for LiteLLM provider compatibility.
         
@@ -164,6 +188,7 @@ class LiteLLMAdapter(FrameworkAdapter):
         
         Args:
             tools: List of tool objects to adapt
+            model_string: Model string (used for future provider-specific adaptations)
             
         Returns:
             List[Tool]: Tools with schemas adapted for LiteLLM compatibility
@@ -194,6 +219,8 @@ class LiteLLMAdapter(FrameworkAdapter):
                     }
                 }
         """
+        logger.debug(f"LiteLLMAdapter.adapt_tools called with {len(tools) if tools else 0} tools, model_string='{model_string}'")
+        
         # For LiteLLM, always clean additionalProperties regardless of underlying provider
         if tools:
             logger.debug("LiteLLM adapter: Cleaning tool schemas to remove 'additionalProperties'.")
@@ -216,5 +243,8 @@ class LiteLLMAdapter(FrameworkAdapter):
                             func_name_or_attr = getattr(func, 'name', func_name)
                             logger.trace(f"Cleaning _tool_spec for tool: {func_name_or_attr}")
                             recursively_remove(func._tool_spec, "additionalProperties")
+        else:
+            logger.debug("No tools to adapt")
 
+        logger.debug(f"Tool adaptation completed, returning {len(tools) if tools else 0} tools")
         return tools

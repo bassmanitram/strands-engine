@@ -1,5 +1,5 @@
 """
-Conversation manager factory for strands_engine.
+Conversation manager factory for strands_agent_factory.
 
 This module provides the ConversationManagerFactory class, which creates and 
 configures conversation managers based on EngineConfig settings. It supports
@@ -27,8 +27,8 @@ from strands.agent.conversation_manager import (
 )
 from strands import Agent
 
-from strands_engine.config import EngineConfig
-from strands_engine.framework.base_adapter import load_framework_adapter
+from strands_agent_factory.config import EngineConfig
+from strands_agent_factory.framework.base_adapter import load_framework_adapter
 
 
 class ConversationManagerFactory:
@@ -36,7 +36,7 @@ class ConversationManagerFactory:
     Factory for creating conversation managers based on engine configuration.
     
     The ConversationManagerFactory provides a centralized way to create and
-    configure conversation managers for strands_engine agents. It handles the
+    configure conversation managers for strands_agent_factory agents. It handles the
     complexity of different conversation management strategies while providing
     robust error handling and fallback mechanisms.
     
@@ -222,7 +222,7 @@ class ConversationManagerFactory:
             summarization_agent = Agent(
                 model=model,
                 callback_handler=None,
-                agent_id="strands_engine_summarization_agent",
+                agent_id="strands_agent_factory_summarization_agent",
             )
 
             logger.info("Successfully created summarization agent with model: "
