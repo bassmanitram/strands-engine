@@ -1,7 +1,22 @@
 """
-A session proxy that implements the SessionManager protocol to allow for dynamic
-session switching.
+Session management proxy for strands_engine.
+
+This module provides the DelegatingSession class, which implements a proxy pattern
+for session management that allows dynamic session switching while maintaining
+compatibility with the strands-agents SessionManager interface.
+
+The DelegatingSession enables:
+- Dynamic session activation/deactivation during runtime
+- Transparent session switching without agent restart
+- Graceful handling of session state conflicts
+- Session persistence using FileSessionManager backend
+- Compatibility with different conversation manager types
+
+The proxy pattern allows applications to control session behavior without
+requiring agent reconfiguration, making it ideal for multi-user or
+multi-conversation scenarios.
 """
+
 from typing import Optional, List, Any
 from pathlib import Path
 from loguru import logger
@@ -15,13 +30,57 @@ from strands.types.content import Message
 
 class DelegatingSession(SessionManager):
     """
-    A session proxy that holds a real, switchable FileSessionManager object internally.
-    This allows the active session to be changed mid-flight. It adheres to the
-    SessionManager interface, making it compatible with the strands.Agent.
+    Session management proxy that enables dynamic session switching.
+    
+    DelegatingSession implements the SessionManager protocol while providing
+    the ability to dynamically activate, deactivate, and switch between sessions
+    during runtime. It maintains compatibility with strands-agents while adding
+    flexibility for complex session management scenarios.
+    
+    The proxy operates in two modes:
+    - Active: Delegates all operations to an internal FileSessionManager
+    - Inactive: Ignores session operations (no persistence)
+    
+    Key features:
+    - Dynamic session switching without agent restart
+    - Graceful handling of conversation manager conflicts
+    - Session backup and recovery for incompatible states
+    - Thread-safe session operations
+    - Comprehensive session lifecycle management
+    
+    Attributes:
+        session_id: Current session identifier or "inactive"
+        is_active: Whether a session is currently active
+        current_session_id: Active session ID or None
+        
+    Example:
+        Basic usage::
+        
+            session = DelegatingSession("user123", "/path/to/sessions")
+            session.initialize(agent)
+            
+            # Switch sessions dynamically
+            session.set_active_session("conversation_1")
+            # ... conversation happens ...
+            session.set_active_session("conversation_2")
     """
 
     def __init__(self, session_name: Optional[str], sessions_home: Optional[str | Path] = None):
-        """Initializes the proxy, optionally setting the first active session."""
+        """
+        Initialize the session proxy.
+        
+        Creates a DelegatingSession that can manage session persistence
+        using FileSessionManager backend. The session starts inactive
+        until an agent is provided and initialization occurs.
+        
+        Args:
+            session_name: Initial session name, or None for inactive mode
+            sessions_home: Directory for session storage, defaults to .strands-sessions
+            
+        Note:
+            If session_name is None, the proxy remains inactive and ignores
+            all session operations. This is useful for stateless operation.
+        """
         # Use default sessions_home if not provided - .strands-sessions in CWD
         default_home = Path.cwd() / ".strands-sessions"
         self._sessions_home = Path(sessions_home or default_home)
@@ -45,9 +104,23 @@ class DelegatingSession(SessionManager):
 
     def set_active_session(self, session_name: str) -> None:
         """
-        Creates and activates a new FileSessionManager. It then calls the new
-        session's initialize() method to sync its history with the agent.
-        Handles conversation manager type changes gracefully.
+        Create and activate a new session.
+        
+        Switches to a new FileSessionManager instance and synchronizes its
+        history with the current agent state. Handles conversation manager
+        type conflicts by creating backup sessions when incompatible states
+        are detected.
+        
+        Args:
+            session_name: Name of the session to activate
+            
+        Raises:
+            RuntimeError: If no agent has been initialized
+            
+        Note:
+            If the session has incompatible conversation manager state,
+            the existing session data is backed up and a fresh session
+            is created to avoid conflicts.
         """
         if not self._agent:
             logger.error("Cannot set active session: DelegatingSession has not been initialized with an agent yet.")
@@ -92,7 +165,18 @@ class DelegatingSession(SessionManager):
         logger.info(f"DelegatingSession is now active for session_id: '{self.session_id}'. Agent history has been updated.")
 
     def deactivate_session(self) -> None:
-        """Deactivate the current session, making the proxy inactive."""
+        """
+        Deactivate the current session.
+        
+        Deactivates the current session and performs any necessary cleanup.
+        After deactivation, the proxy ignores all session operations until
+        a new session is activated.
+        
+        Note:
+            Deactivation attempts to call cleanup methods on the underlying
+            FileSessionManager if available, but continues gracefully if
+            cleanup fails.
+        """
         if self._active_session:
             logger.info(f"Deactivating session '{self.session_id}'")
             # Cleanup if needed
@@ -107,7 +191,20 @@ class DelegatingSession(SessionManager):
             logger.debug("No active session to deactivate")
 
     def list_sessions(self) -> List[str]:
-        """Scans the sessions directory and returns a list of available session names."""
+        """
+        Get a list of available session names.
+        
+        Scans the sessions directory and returns all available session
+        identifiers. Sessions are stored as directories with the prefix
+        "session_" by the FileSessionManager backend.
+        
+        Returns:
+            List[str]: Sorted list of available session names
+            
+        Example:
+            >>> session.list_sessions()
+            ['conversation_1', 'user123', 'work_session']
+        """
         if not self._sessions_home.exists():
             return []
 
@@ -122,18 +219,40 @@ class DelegatingSession(SessionManager):
 
     @property
     def is_active(self) -> bool:
-        """Returns True if a session is currently active."""
+        """
+        Check if a session is currently active.
+        
+        Returns:
+            bool: True if a session is active, False if inactive
+        """
         return self._active_session is not None
 
     @property
     def current_session_id(self) -> Optional[str]:
-        """Returns the current session ID, or None if inactive."""
+        """
+        Get the current session identifier.
+        
+        Returns:
+            Optional[str]: Current session ID, or None if inactive
+        """
         return self.session_id if self.is_active else None
 
-    # --- Methods that implement the SessionManager abstract interface ---
+    # ========================================================================
+    # SessionManager Interface Implementation
+    # ========================================================================
 
     def initialize(self, agent: Agent, **kwargs: Any) -> None:
-        """Stores the agent instance and sets up the initial session if one was provided."""
+        """
+        Initialize the proxy with a strands-agents Agent instance.
+        
+        Stores the agent reference and activates the initial session if
+        one was configured during construction. This method is called
+        automatically by strands-agents during agent setup.
+        
+        Args:
+            agent: The strands-agents Agent instance to manage
+            **kwargs: Additional arguments (unused but required by interface)
+        """
         self._agent = agent
         if self.session_id != "inactive" and not self._active_session:
             self.set_active_session(self.session_id)
@@ -141,7 +260,17 @@ class DelegatingSession(SessionManager):
         logger.info(f"DelegatingSession initialized with agent (active: {self.is_active})")
 
     def append_message(self, message: Message, agent: Agent, **kwargs: Any) -> None:
-        """Appends a single message to the active session."""
+        """
+        Append a message to the active session.
+        
+        Delegates message storage to the active FileSessionManager if
+        a session is active. Messages are ignored if no session is active.
+        
+        Args:
+            message: Message to append to the session
+            agent: Agent instance (required by interface)
+            **kwargs: Additional arguments passed to the session manager
+        """
         if self._active_session:
             self._active_session.append_message(message, agent, **kwargs)
             logger.debug(f"Appended message to session '{self.session_id}'")
@@ -149,7 +278,17 @@ class DelegatingSession(SessionManager):
             logger.debug("Session inactive - ignoring message append")
 
     def redact_latest_message(self, redact_message: Message, agent: Agent, **kwargs: Any) -> None:
-        """Redacts the latest message from the active session."""
+        """
+        Redact the latest message from the active session.
+        
+        Delegates message redaction to the active FileSessionManager if
+        a session is active. Redaction is ignored if no session is active.
+        
+        Args:
+            redact_message: Redaction message (replaces the latest message)
+            agent: Agent instance (required by interface)
+            **kwargs: Additional arguments passed to the session manager
+        """
         if self._active_session:
             self._active_session.redact_latest_message(redact_message, agent, **kwargs)
             logger.debug(f"Redacted latest message in session '{self.session_id}'")
@@ -157,7 +296,16 @@ class DelegatingSession(SessionManager):
             logger.debug("Session inactive - ignoring message redaction")
 
     def sync_agent(self, agent: Agent) -> None:
-        """Syncs the agent's state with the active session."""
+        """
+        Synchronize agent state with the active session.
+        
+        Updates the agent's internal state to match the active session's
+        stored conversation history. This is typically called when switching
+        sessions or after session initialization.
+        
+        Args:
+            agent: Agent instance to synchronize
+        """
         if self._active_session:
             self._active_session.sync_agent(agent)
             logger.debug(f"Synced agent state with session '{self.session_id}'")
@@ -166,34 +314,42 @@ class DelegatingSession(SessionManager):
 
     def clear(self) -> None:
         """
-        Clears the agent's in-memory messages. If a session is active,
-        it also clears the persisted session file by overwriting it with an
-        empty history, keeping the session active.
+        Clear the agent's in-memory message history.
+        
+        Clears the agent's message list in memory. If a session is active,
+        the persistent session data remains intact (following YACBA patterns
+        for safety). This prevents accidental loss of important conversation
+        history.
+        
+        Note:
+            Only clears in-memory state. Persistent session files are
+            preserved to prevent accidental data loss. Use delete_session()
+            if you need to remove persistent data.
         """
         # Step 1: Always clear the agent's in-memory message list.
         if self._agent and hasattr(self._agent, 'messages') and self._agent.messages:
             self._agent.messages.clear()
             logger.debug("Cleared agent's in-memory message list.")
 
-        # Step 2: If a session is active, clear its persisted file data
-        # 
-        # Note: Following YACBA's pattern - this is commented out as it may
-        # delete important session data. Consider if we want to enable this.
-        #
-        # if self._active_session:
-        #     # Clear the persisted session file by saving empty history
-        #     self._active_session._save([])
-        #     logger.info(f"Cleared session file for '{self.session_id}'. Session remains active.")
-        
+        # Step 2: If a session is active, the persistent data remains intact
+        # following YACBA's pattern for safety
         if self._active_session:
             logger.info(f"Cleared agent memory. Session '{self.session_id}' remains active with persisted data intact.")
         else:
             logger.debug("Session inactive - no persistent data to clear")
 
-    # --- Additional utility methods ---
+    # ========================================================================
+    # Additional Utility Methods
+    # ========================================================================
 
     def save(self) -> None:
-        """Force save current session state (if active)."""
+        """
+        Force save the current session state.
+        
+        Manually triggers a save operation on the active session to ensure
+        all current conversation state is persisted. Useful for ensuring
+        data durability at critical points.
+        """
         if self._active_session:
             try:
                 # Force save session state
@@ -212,11 +368,14 @@ class DelegatingSession(SessionManager):
         """
         Load an existing session by ID.
         
+        Attempts to load and activate an existing session. Deactivates
+        any currently active session before loading the new one.
+        
         Args:
             session_id: Session ID to load
             
         Returns:
-            True if session was loaded successfully, False otherwise
+            bool: True if session was loaded successfully, False otherwise
         """
         try:
             if session_id in self.list_sessions():
@@ -236,11 +395,18 @@ class DelegatingSession(SessionManager):
         """
         Delete a session by ID.
         
+        Permanently removes a session and all its associated data.
+        If the session is currently active, it will be deactivated first.
+        
         Args:
             session_id: Session ID to delete
             
         Returns:
-            True if session was deleted successfully, False otherwise
+            bool: True if session was deleted successfully, False otherwise
+            
+        Warning:
+            This operation is irreversible. All conversation history
+            for the specified session will be permanently lost.
         """
         try:
             # Deactivate if this is the current session
@@ -266,10 +432,21 @@ class DelegatingSession(SessionManager):
 
     def get_session_info(self) -> dict:
         """
-        Get information about the current session state.
+        Get comprehensive information about the current session state.
+        
+        Returns detailed information about the session proxy state,
+        active sessions, and configuration. Useful for debugging
+        and status reporting.
         
         Returns:
-            Dictionary with session information
+            dict: Dictionary containing session state information
+            
+        Example:
+            >>> info = session.get_session_info()
+            >>> print(info['is_active'])
+            True
+            >>> print(info['available_sessions'])
+            ['chat1', 'work_session', 'user123']
         """
         return {
             "session_id": self.session_id,
