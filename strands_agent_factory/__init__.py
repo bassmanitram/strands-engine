@@ -31,12 +31,12 @@ Example:
         response = await factory.process_message("Hello!")
 """
 
-from .config import EngineConfig
-from .engine import AgentFactory  
+from .config import AgentFactoryConfig
+from .factory import AgentFactory  
 
 __version__ = "0.1.0"
 
 __all__ = [
-    "EngineConfig",
+    "AgentFactoryConfig",
     "AgentFactory",
 ]

@@ -18,6 +18,7 @@ from loguru import logger
 from strands import Agent
 
 from strands_agent_factory.framework.base_adapter import FrameworkAdapter
+from strands_agent_factory.messages import generate_llm_messages
 
 
 class WrappedAgent(Agent):
@@ -84,8 +85,10 @@ class WrappedAgent(Agent):
         super().__init__(**kwargs)
         logger.debug("WrappedAgent initialization completed")
 
-    async def handle_agent_stream(self,
-        message: Union[str, List[Dict[str, Any]]]) -> bool:
+
+
+    async def _handle_agent_stream(self,
+        message: str) -> bool:
         """
         Handle streaming agent response with framework-specific transformations.
         
@@ -118,20 +121,22 @@ class WrappedAgent(Agent):
 
         try:
             # Transform the message using the framework adapter
+            logger.debug(f"Creating messages from input")
+            messages = generate_llm_messages(message)
             logger.debug(f"Transforming message using adapter: {type(self.adapter).__name__}")
-            transformed_message = self.adapter.transform_content(message)
-            logger.debug(f"Message transformed, type: {type(transformed_message)}")
+            transformed_messages = self.adapter.adapt_content(messages)
+            logger.debug(f"Message transformed, type: {type(transformed_messages)}")
 
             # Stream the response - the CallbackHandler handles all output formatting
             logger.debug("Starting agent streaming...")
-            async for chunk in self.stream_async(transformed_message):
+            async for chunk in self.stream_async(transformed_messages):
                 logger.trace(f"Received stream chunk: {chunk}")
                 pass
 
             logger.debug("Agent streaming completed successfully")
             return True
         except Exception as e:
-            logger.error(f"Unexpected error in agent stream: {e}", exc_info=True)
+            logger.exception(f"Unexpected error in agent stream")
             print(
                 f"\nAn unexpected error occurred while generating the response: {e}",
                 file=sys.stderr,
@@ -139,7 +144,7 @@ class WrappedAgent(Agent):
             return False
 
     async def send_message_to_agent(self,
-        message: Union[str, List[Dict[str, Any]]],
+        message: str,
         show_user_input: bool = True
     ) -> bool:
         """
@@ -176,7 +181,7 @@ class WrappedAgent(Agent):
         """
         logger.debug(f"send_message_to_agent called with message type: {type(message)}, show_user_input: {show_user_input}")
         
-        if show_user_input and isinstance(message, str):
+        if show_user_input:
             print(f"You: {message}")
 
-        return await self.handle_agent_stream(message)
+        return await self._handle_agent_stream(message)

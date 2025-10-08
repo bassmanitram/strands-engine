@@ -156,18 +156,7 @@ class LiteLLMAdapter(FrameworkAdapter):
         # The LiteLLMModel constructor expects the config to be passed as model_config parameter
         # but strands-agents expects model_id to be accessible at the top level of model.config
         logger.debug(f"Creating LiteLLMModel with client_args={client_args}, model_config={model_config}")
-        model = LiteLLMModel(client_args=client_args, model_config=model_config)
-        
-        # Verify the model was created with the correct structure
-        logger.debug(f"LiteLLMModel created, config structure: {model.config}")
-        
-        # Check if model_id is accessible at the top level (what strands-agents expects)
-        if 'model_id' not in model.config and 'model_config' in model.config:
-            # The model_id got nested, we need to flatten it
-            if 'model_id' in model.config['model_config']:
-                logger.debug("model_id is nested, flattening for strands-agents compatibility")
-                model.config['model_id'] = model.config['model_config']['model_id']
-                logger.debug(f"Flattened config: {model.config}")
+        model = LiteLLMModel(client_args=client_args, **model_config)
         
         logger.debug(f"LiteLLMModel created successfully: {type(model).__name__}")
         return model

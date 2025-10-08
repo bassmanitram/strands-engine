@@ -21,7 +21,7 @@ import base64
 import json
 import mimetypes
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 from loguru import logger
 import yaml
@@ -145,6 +145,46 @@ def is_likely_text_file(file_path: PathLike) -> bool:
     except (OSError, IOError):
         return False
 
+def paths_to_file_references(file_paths: List[Tuple[PathLike, Optional[str]]]) -> str:
+    """
+    Convert a list of file paths and mimetypes to file() reference string.
+    
+    Takes a list of (path, mimetype) tuples and converts them into a string
+    containing space-separated file() references that can be used with
+    generate_llm_messages().
+    
+    Args:
+        file_paths: List of (file_path, optional_mimetype) tuples
+        
+    Returns:
+        list file() references separated
+        
+    Example:
+        >>> paths = [("doc.txt", "text/plain"), ("data.json", None)]
+        >>> result = paths_to_file_references(paths)
+        >>> print(result)
+        ["file('doc.txt', 'text/plain')", "file('data.json')"]
+        
+        >>> # Can be used with generate_llm_messages
+        >>> message = generate_llm_messages(f"Process {result}")
+    """
+    if not file_paths:
+        return ""
+    
+    references = []
+    for file_path, mimetype in file_paths:
+        path_str = str(file_path)
+        
+        if mimetype:
+            # Include mimetype with single quotes
+            ref = f"file('{path_str}', '{mimetype}')"
+        else:
+            # Just the file path
+            ref = f"file('{path_str}')"
+        
+        references.append(ref)
+    
+    return references
 
 # ============================================================================
 # Schema Manipulation
@@ -244,31 +284,20 @@ def load_structured_file(file_path: PathLike, file_format: str = 'auto') -> Dict
 # File Content Processing
 # ============================================================================
 
-def load_file_content(file_path: PathLike, content_type: str = 'auto') -> Dict[str, Any]:
+def load_file_content(file_path: PathLike, content_type: str = 'auto') -> Union[bytes, str]:
     """
-    Load file contents with format detection.
-    
-    Loads file content as either text or binary data based on the specified
-    content type or automatic detection. Binary files are base64-encoded
-    for safe transmission and storage.
-    
+    Load file contents with format detection and caching.
+
     Args:
-        file_path: Path to the file to load
-        content_type: Content type - 'text', 'binary', or 'auto' for detection
+        file_path: Path to the file
+        content_type: 'text', 'binary', or 'auto' (detect from file analysis)
 
     Returns:
-        Dict[str, Any]: Dictionary with 'type', 'content', and metadata keys
-        - For text files: {"type": "text", "content": str}
-        - For binary files: {"type": "binary", "content": str, "encoding": "base64", "mimetype": str}
+        Dictionary with 'type' and 'content' keys, plus optional metadata
 
     Raises:
         FileNotFoundError: If file doesn't exist
         OSError: If file cannot be read
-        
-    Example:
-        >>> content = load_file_content("image.png")
-        >>> print(content["type"])  # "binary"
-        >>> print(content["encoding"])  # "base64"
     """
     path = Path(file_path)
     if not path.exists():
@@ -278,75 +307,79 @@ def load_file_content(file_path: PathLike, content_type: str = 'auto') -> Dict[s
         content_type = 'text' if is_likely_text_file(path) else 'binary'
 
     try:
-        if content_type == 'text':
+        if content_type == "text":
             with open(path, 'r', errors='replace') as f:
-                return {"type": "text", "content": f.read()}
+                return f.read()
         else:
             with open(path, 'rb') as f:
-                encoded = base64.b64encode(f.read()).decode('utf-8')
-                return {
-                    "type": "binary",
-                    "content": encoded,
-                    "encoding": "base64",
-                    "mimetype": guess_mimetype(path)
-                }
+                return f.read()
     except OSError as e:
         raise OSError(f"Error reading file {file_path}: {e}")
 
+DOCUMENT_TYPES = [ 'pdf', 'csv', 'doc', 'docx', 'xls', 'xlsx', 'html', 'txt', 'md' ]
 
-def _process_single_file(file_path: Path, mimetype: str) -> Optional[Dict[str, Any]]:
-    """
-    Process a single file into a content block for agent consumption.
+def generate_file_content_block(file_path: Path, mimetype: str) -> Optional[Dict[str, Any]]:
+    # Skip files that exceed the size limit
+    if file_path.stat().st_size > MAX_FILE_SIZE_BYTES:
+        logger.warning(f"Skipping file '{file_path}' because it exceeds the {MAX_FILE_SIZE_BYTES / (1024*1024):.0f}MB size limit.")
+        return {
+            "type": "text",
+            "text": f"\n[Content of file '{file_path.name}' was skipped because it is too large.]\n"
+        }
+
+    detected_mimetype = mimetype or guess_mimetype(file_path) or "application/octet-stream"
+    format = (mimetypes.guess_extension(detected_mimetype) or ".bin")[1:]
+    likely_text = is_likely_text_file(file_path)
+    file_bytes = load_file_content(file_path, 'binary')
     
-    Internal utility function that reads a file and converts it into the
-    appropriate content block format expected by strands-agents. Handles
-    both text and binary files, with size limits and error handling.
-    
-    Args:
-        file_path: Path to the file to process
-        mimetype: MIME type of the file
-
-    Returns:
-        Optional[Dict[str, Any]]: Content block dictionary, or None if processing fails
-        - Text files: {"type": "text", "text": str}
-        - Binary files: {"type": "image", "source": {"type": "base64", "media_type": str, "data": str}}
-        - Large files: {"type": "text", "text": "[skipped message]"}
-        
-    Note:
-        Files larger than MAX_FILE_SIZE_BYTES are skipped with a placeholder message.
-        The function uses 'image' type for binary data as per strands conventions.
-    """
-    try:
-        # Check file size before attempting to read
-        if file_path.stat().st_size > MAX_FILE_SIZE_BYTES:
-            logger.warning(f"Skipping file '{file_path}' because it exceeds the {MAX_FILE_SIZE_BYTES / (1024*1024):.0f}MB size limit.")
-            return {"type": "text", "text": f"\\n[Content of file '{file_path.name}' was skipped because it is too large.]\\n"}
-        
-        # Let the file utility handle text vs binary detection automatically
-        result = load_file_content(file_path, 'auto')
-
-        if result['type'] == 'text':
-            logger.debug(f"Reading file '{file_path}' as text.")
-            return {"type": "text", "text": result['content']}
-        else:
-            logger.debug(f"Reading file '{file_path}' as base64-encoded binary.")
-            # The 'source' dictionary is the standard way to send binary data.
-            return {
-                "type": "image", # This is a generic type for binary data in strands
-                "source": {
-                    "type": "base64",
-                    "media_type": result.get('mimetype', mimetype),  # Use detected or provided
-                    "data": result['content']
-                }
+    # Video files
+    if detected_mimetype.startswith("video/"):
+        return {
+            "video": {
+                "format": format,
+                "source": {"bytes": file_bytes}
             }
-    except Exception as e:
-        logger.error(f"Could not read or encode file {file_path}: {e}")
-        return None
+        }
 
+    # Image files
+    if detected_mimetype.startswith("image/"):
+        return {
+            "image": {
+                "format": format,
+                "source": {"bytes": file_bytes}
+            }
+        }
+
+    # Known document types
+    if format in DOCUMENT_TYPES:
+        return {
+            "document": {
+                "name": str(file_path),
+                "format": format,
+                "source": {"bytes": file_bytes}
+            }
+        }
+
+    # Other text files
+    if likely_text:
+        return {
+            "document": {
+                "name": str(file_path),
+                "format": "txt",
+                "source": {"bytes": file_bytes}
+            }
+        }
+
+    # Fallback: treat as binary image
+    return {
+        "image": {
+            "format": format,
+            "source": {"bytes": file_bytes}
+        }
+    }
 
 def files_to_content_blocks(
     files: List[tuple[str, str]],
-    add_headers: bool = True,
     max_files: Optional[int] = None
 ) -> List[Dict[str, Any]]:
     """
@@ -385,15 +418,8 @@ def files_to_content_blocks(
 
         file_path = Path(file_path_str)
 
-        # Add header if requested
-        if add_headers:
-            content_blocks.append({
-                "type": "text",
-                "text": f"\\n--- File: {file_path_str} ({mimetype}) ---\\n"
-            })
-
         # Process the file
-        file_block = _process_single_file(file_path, mimetype)
+        file_block = generate_file_content_block(file_path, mimetype)
         if file_block:
             content_blocks.append(file_block)
             processed_count += 1

@@ -27,7 +27,7 @@ from strands.agent.conversation_manager import (
 )
 from strands import Agent
 
-from strands_agent_factory.config import EngineConfig
+from strands_agent_factory.config import AgentFactoryConfig
 from strands_agent_factory.framework.base_adapter import load_framework_adapter
 
 
@@ -62,7 +62,7 @@ class ConversationManagerFactory:
     """
 
     @staticmethod
-    def create_conversation_manager(config: EngineConfig) -> ConversationManager:
+    def create_conversation_manager(config: AgentFactoryConfig) -> ConversationManager:
         """
         Create a conversation manager based on engine configuration.
         

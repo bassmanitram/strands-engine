@@ -71,30 +71,8 @@ class AnthropicAdapter(FrameworkAdapter):
         Returns:
             str: Framework identifier "anthropic" for logging and debugging
         """
+        logger.debug("AnthropicAdapter.framework_name called")
         return "anthropic"
-
-    def adapt_tools(self, tools: List[Tool]) -> List[Tool]:
-        """
-        Adapt tools for Anthropic function calling compatibility.
-        
-        Anthropic's function calling API has specific requirements for tool
-        schemas. This method ensures that tools are properly formatted for
-        Anthropic's expectations while preserving their functionality.
-        
-        Args:
-            tools: List of tool objects to adapt
-            
-        Returns:
-            List[Tool]: Tools adapted for Anthropic compatibility
-            
-        Note:
-            Anthropic generally has good tool schema compatibility, so this
-            method typically returns tools unchanged. Future versions may
-            add specific adaptations as needed.
-        """
-        # Anthropic generally has good tool compatibility
-        # Return tools unchanged for now
-        return tools
     
     def load_model(self, model_name: Optional[str] = None, model_config: Optional[Dict[str, Any]] = None) -> AnthropicModel:
         """
@@ -142,14 +120,56 @@ class AnthropicAdapter(FrameworkAdapter):
             Anthropic client constructor, while other parameters configure
             the model behavior.
         """
+        logger.debug(f"AnthropicAdapter.load_model called with model_name='{model_name}', model_config={model_config}")
+        
         model_config = model_config or {}
+        logger.debug(f"Using model_config: {model_config}")
         
         # Set model name if provided
         if model_name:
             model_config["model"] = model_name
-            
+            logger.debug(f"Set model_config['model'] to '{model_name}'")
+        
         # Extract client-specific arguments
         client_args = model_config.pop("client_args", None)
+        logger.debug(f"Extracted client_args: {client_args}")
+        logger.debug(f"Final model_config after client_args extraction: {model_config}")
         
         # Create and return the Anthropic model
-        return AnthropicModel(client_args=client_args, model_config=model_config)
+        logger.debug(f"Creating AnthropicModel with client_args={client_args}, model_config={model_config}")
+        model = AnthropicModel(client_args=client_args, model_config=model_config)
+        
+        logger.debug(f"AnthropicModel created successfully: {type(model).__name__}")
+        return model
+
+    def adapt_tools(self, tools: List[Tool], model_string: str) -> List[Tool]:
+        """
+        Adapt tools for Anthropic compatibility.
+        
+        Anthropic's Claude models generally support standard tool schemas
+        with minimal modification. This method performs basic compatibility
+        checks and adaptations if needed, but typically returns tools unchanged.
+        
+        Args:
+            tools: List of tool objects to adapt
+            model_string: Model string for potential model-specific adaptations
+            
+        Returns:
+            List[Tool]: Tools adapted for Anthropic (unchanged by default)
+            
+        Note:
+            Anthropic's function calling API is generally compatible with
+            standard JSON schemas. This method provides an extension point
+            for future Anthropic-specific tool optimizations or schema
+            adjustments if they become necessary.
+        """
+        logger.debug(f"AnthropicAdapter.adapt_tools called with {len(tools) if tools else 0} tools, model_string='{model_string}'")
+        
+        # Anthropic generally supports standard tool schemas without modification
+        if tools:
+            logger.debug("Anthropic adapter: Tools passed through without modification")
+        else:
+            logger.debug("No tools to adapt")
+        
+        logger.debug(f"Tool adaptation completed, returning {len(tools) if tools else 0} tools")
+        return tools

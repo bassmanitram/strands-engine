@@ -25,10 +25,11 @@ The adapters follow a consistent pattern for:
 from abc import ABC, abstractmethod
 from typing import Any, Dict, List, Optional
 from strands.models import Model
+from strands.types.content import Messages
 
 from loguru import logger
 
-from ..ptypes import Tool, Message
+from ..ptypes import Tool
 import importlib
 
 # ============================================================================
@@ -132,9 +133,8 @@ class FrameworkAdapter(ABC):
     def prepare_agent_args(
         self,
         system_prompt: Optional[str] = None,
-        messages: Optional[List[Message]] = None,
-        startup_files_content: Optional[List[Message]] = None,
         emulate_system_prompt: bool = False,
+        messages: Optional[Messages] = None,
         **kwargs
     ) -> Dict[str, Any]:
         """
@@ -153,7 +153,6 @@ class FrameworkAdapter(ABC):
         Args:
             system_prompt: System prompt to use (optional)
             messages: Existing message history (optional)
-            startup_files_content: Optional startup file messages
             emulate_system_prompt: Whether to emulate system prompt in first user message
             **kwargs: Additional arguments passed through to agent
 
@@ -164,36 +163,17 @@ class FrameworkAdapter(ABC):
             System prompt emulation is used for frameworks that don't support
             system prompts natively. The prompt is prepended to the first user message.
         """
-        logger.debug(f"FrameworkAdapter.prepare_agent_args called with system_prompt={system_prompt is not None}, messages={len(messages) if messages else 0}, startup_files_content={len(startup_files_content) if startup_files_content else 0}, emulate_system_prompt={emulate_system_prompt}, kwargs={list(kwargs.keys())}")
+        logger.debug(f"FrameworkAdapter.prepare_agent_args called with system_prompt={system_prompt is not None}, messages={len(messages) if messages else 0}, emulate_system_prompt={emulate_system_prompt}, kwargs={list(kwargs.keys())}")
         
         messages = messages or []
         
-        # Combine startup files with existing messages
-        if startup_files_content:
-            messages = startup_files_content + messages
-            logger.debug(f"Combined startup files with messages, total messages: {len(messages)}")
-
         # Handle system prompt emulation for frameworks that don't support it natively
         if emulate_system_prompt and system_prompt:
             logger.debug("Emulating system prompt by prepending to the first user message as requested.")
-            first_user_msg_index = next(
-                (i for i, msg in enumerate(messages) if msg["role"] == "user"), -1
-            )
-
-            if first_user_msg_index != -1:
-                current_content = messages[first_user_msg_index]["content"]
-                if isinstance(current_content, list):
-                    messages[first_user_msg_index]["content"].insert(
-                        0, {"type": "text", "text": system_prompt}
-                    )
-                else:
-                    new_content = f"{system_prompt}\\n\\n{current_content}"
-                    messages[first_user_msg_index]["content"] = new_content
-            else:
-                messages.insert(0, {
-                    "role": "user",
-                    "content": [{"type": "text", "text": system_prompt}]
-                })
+            messages.insert(0, {
+                "role": "user",
+                "content": [{"text": system_prompt}]
+            })
 
             agent_args = {"system_prompt": None, "messages": messages}
             logger.debug("System prompt emulation applied")
@@ -207,7 +187,7 @@ class FrameworkAdapter(ABC):
         logger.debug(f"prepare_agent_args returning keys: {list(agent_args.keys())}")
         return agent_args
 
-    def transform_content(self, content: Any) -> Any:
+    def adapt_content(self, content: Messages) -> Messages:
         """
         Transform message content for the specific framework.
         
@@ -219,13 +199,13 @@ class FrameworkAdapter(ABC):
             content: Content to transform
             
         Returns:
-            Any: Transformed content (same type as input by default)
+            Messages: Transformed content (same type as input by default)
             
         Note:
             Override this method if your framework requires specific
             content transformations (e.g., format conversion, filtering).
         """
-        logger.debug(f"FrameworkAdapter.transform_content called with content type: {type(content)}")
+        logger.debug(f"FrameworkAdapter.adapt_content called with content type: {type(content)}")
         return content
 
     # ========================================================================
@@ -252,26 +232,9 @@ class FrameworkAdapter(ABC):
             Called during factory initialization before model loading.
         """
         logger.debug(f"FrameworkAdapter.initialize called with model='{model}', model_config={model_config}")
+        logger.debug("FrameworkAdapter.initialize: No initialization required, returning True")
         return True
 
-    def get_model_info(self) -> Dict[str, Any]:
-        """
-        Get information about the loaded model.
-        
-        Returns metadata about the currently loaded model for debugging
-        and logging purposes. The default implementation returns minimal
-        framework information.
-        
-        Returns:
-            Dict[str, Any]: Dictionary with model information
-            
-        Example:
-            >>> adapter.get_model_info()
-            {"framework": "openai", "model": "gpt-4o", "provider": "openai"}
-        """
-        logger.debug("FrameworkAdapter.get_model_info called")
-        return {"framework": self.framework_name}
-    
     @abstractmethod
     def load_model(self, 
                    model_name: Optional[str] = None, 

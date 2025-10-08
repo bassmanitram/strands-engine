@@ -41,7 +41,7 @@ Type for conversation manager strategies.
 # ============================================================================
 
 @dataclass
-class EngineConfig:
+class AgentFactoryConfig:
     """
     Comprehensive configuration for strands_agent_factory agent creation.
     
@@ -96,6 +96,9 @@ class EngineConfig:
     
     system_prompt: Optional[str] = None
     """System prompt to guide agent behavior."""
+    
+    initial_message: Optional[str] = None
+    """Initial user prompt to send (along with any uploaded files)"""
     
     model_config: Optional[Dict[str, Any]] = None
     """

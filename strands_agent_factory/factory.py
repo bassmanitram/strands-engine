@@ -28,10 +28,12 @@ from strands_agent_factory.conversation import ConversationManagerFactory
 from strands_agent_factory.framework.base_adapter import load_framework_adapter
 from strands.agent.conversation_manager import ConversationManager
 from strands.handlers.callback_handler import PrintingCallbackHandler
+from strands.types.content import Messages
 
-from strands_agent_factory.utils import files_to_content_blocks
+from strands_agent_factory.messages import generate_llm_messages
+from strands_agent_factory.utils import files_to_content_blocks, paths_to_file_references
 
-from .config import EngineConfig
+from .config import AgentFactoryConfig
 from .ptypes import Tool, FrameworkAdapter
 from .session import DelegatingSession
 from .tools import ToolFactory
@@ -70,7 +72,7 @@ class AgentFactory:
                     response = await agent.send_message_to_agent("How are you?")
     """
     
-    def __init__(self, config: EngineConfig):
+    def __init__(self, config: AgentFactoryConfig):
         """
         Initialize the AgentFactory with configuration.
         
@@ -92,6 +94,7 @@ class AgentFactory:
         self._conversation_manager = None  # strands-agents ConversationManager
         self._exit_stack = ExitStack()  # For resource management
         self._tool_factory: Optional[ToolFactory] = None
+        self._initial_messages: Optional[Messages] = None
         
         # Parse model string into framework and model parts during initialization
         self._framework_name, self._model_id = self._parse_model_string(config.model)
@@ -167,8 +170,8 @@ class AgentFactory:
             # 2. Load tools from provided config paths (for Agent configuration, not direct execution)
             await self._load_tools()
             
-            # 3. Process uploaded files
-            await self._load_initial_files()
+            # 3. Initial messages
+            await self._build_initial_messages()
             
             # 4. Create conversation manager
             self._setup_conversation_manager()
@@ -178,7 +181,7 @@ class AgentFactory:
             return True
             
         except Exception as e:
-            logger.error(f"Factory initialization failed: {e}")
+            logger.exception("Factory initialization failed")
             return False
 
     async def _load_tools(self) -> None:
@@ -228,25 +231,19 @@ class AgentFactory:
             self._loaded_tools = self._framework_adapter.adapt_tools(self._loaded_tools, self._model_id)
             logger.debug(f"Tool adaptation completed, {len(self._loaded_tools)} tools after adaptation")
 
-    async def _load_initial_files(self) -> None:
-        """
-        Process and load files specified in configuration.
-        
-        Converts file paths from EngineConfig.file_paths into content blocks
-        that can be included in agent conversations. Files are processed
-        according to their MIME type and made available for agent consumption.
-        
-        The processed files are stored as startup content that gets included
-        in the agent's initial context.
-        """
-        logger.debug(f"_load_initial_files called with file_paths: {self.config.file_paths}")
-        
-        if not self.config.file_paths:
+    async def _build_initial_messages(self) -> None:
+        logger.debug(f"_build_initial_messages called with file_paths: {self.config.file_paths}; initial_message:  {self.config.initial_message}")
+
+        if not (self.config.file_paths or self.config.initial_message):
             logger.debug("No file paths provided, skipping file loading")
             return
         
-        self.startup_files_content = files_to_content_blocks(self.config.file_paths)
-        logger.debug(f"Loaded {len(self.startup_files_content) if self.startup_files_content else 0} startup files")
+        initial_message = self.config.initial_message or "The user has provided the following resources. Acknowledge receipt and await instructions."
+        startup_files_references = paths_to_file_references(self.config.file_paths) if self.config.file_paths else []
+
+        self._initial_messages = generate_llm_messages("\n".join([initial_message] + startup_files_references))
+
+        logger.debug(f"Created initial messages")
     
     def _setup_framework_adapter(self) -> None:
         """
@@ -351,8 +348,8 @@ class AgentFactory:
             logger.debug(f"Preparing agent args with system_prompt={self.config.system_prompt is not None}, emulate_system_prompt={self.config.emulate_system_prompt}")
             agent_args = self._framework_adapter.prepare_agent_args(
                 system_prompt=self.config.system_prompt,
-                startup_files_content=getattr(self, 'startup_files_content', None),
-                emulate_system_prompt=self.config.emulate_system_prompt
+                emulate_system_prompt=self.config.emulate_system_prompt,
+                messages=self._initial_messages
             )
             logger.debug(f"Agent args prepared: {list(agent_args.keys())}")
 
@@ -368,8 +365,9 @@ class AgentFactory:
                 **agent_args
             )
             logger.debug(f"WrappedAgent created successfully: {type(wrapped_agent).__name__}")
+
             return wrapped_agent
             
         except Exception as e:
-            logger.error(f"Fatal error initializing the agent: {e}", exc_info=True)
+            logger.exception("Error initializing the agent")
             return None

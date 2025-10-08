@@ -23,7 +23,7 @@ from typing import Any, Dict, List, Optional
 from loguru import logger
 
 from .base_adapter import FrameworkAdapter
-from ..ptypes import Tool, Message
+from ..ptypes import Tool
 
 from strands.models.ollama import OllamaModel
 
@@ -92,30 +92,8 @@ class OllamaAdapter(FrameworkAdapter):
         Returns:
             str: Framework identifier "ollama" for logging and debugging
         """
+        logger.debug("OllamaAdapter.framework_name called")
         return "ollama"
-
-    def adapt_tools(self, tools: List[Tool]) -> List[Tool]:
-        """
-        Adapt tools for Ollama model compatibility.
-        
-        Some Ollama models may have limitations with complex tool schemas
-        or specific formatting requirements. This method can apply model-
-        specific adaptations to ensure optimal tool compatibility.
-        
-        Args:
-            tools: List of tool objects to adapt
-            
-        Returns:
-            List[Tool]: Tools adapted for Ollama compatibility
-            
-        Note:
-            Current implementation returns tools unchanged. Future versions
-            may add specific adaptations for different Ollama models based
-            on their capabilities and limitations.
-        """
-        # Ollama models generally work well with standard tool schemas
-        # Return tools unchanged for now
-        return tools
 
     def load_model(self, model_name: Optional[str] = None, model_config: Optional[Dict[str, Any]] = None) -> OllamaModel:
         """
@@ -168,102 +146,61 @@ class OllamaAdapter(FrameworkAdapter):
             instances. Ollama client arguments are passed directly to the
             underlying Ollama client for advanced configuration.
         """
+        logger.debug(f"OllamaAdapter.load_model called with model_name='{model_name}', model_config={model_config}")
+        
         model_config = model_config or {}
+        logger.debug(f"Using model_config: {model_config}")
         
         # Set model name if provided
         if model_name:
             model_config["model"] = model_name
-            
+            logger.debug(f"Set model_config['model'] to '{model_name}'")
+        
         # Extract Ollama-specific configuration
         host = model_config.pop("host", "127.0.0.1:11434")
         ollama_client_args = model_config.pop("ollama_client_args", None)
         
-        # Create and return the Ollama model
-        return OllamaModel(host=host, ollama_client_args=ollama_client_args, model_config=model_config)
-
-    def prepare_agent_args(
-        self,
-        system_prompt: Optional[str] = None,
-        messages: Optional[List[Message]] = None,
-        startup_files_content: Optional[List[Message]] = None,
-        emulate_system_prompt: bool = False,
-        **kwargs
-    ) -> Dict[str, Any]:
-        """
-        Prepare agent arguments with Ollama-specific optimizations.
+        logger.debug(f"Using host: {host}")
+        logger.debug(f"Extracted ollama_client_args: {ollama_client_args}")
+        logger.debug(f"Final model_config after extraction: {model_config}")
         
-        Some Ollama models, particularly smaller or older ones, may not handle
-        system prompts well. This method provides automatic detection and
-        emulation for models that benefit from having system prompts prepended
-        to user messages instead of using native system prompt support.
+        # Create and return the Ollama model
+        logger.debug(f"Creating OllamaModel with host={host}, ollama_client_args={ollama_client_args}, model_config={model_config}")
+        model = OllamaModel(host=host, ollama_client_args=ollama_client_args, model_config=model_config)
+        
+        logger.debug(f"OllamaModel created successfully: {type(model).__name__}")
+        return model
+
+    def adapt_tools(self, tools: List[Tool], model_string: str) -> List[Tool]:
+        """
+        Adapt tools for Ollama compatibility.
+        
+        Many Ollama models have varying levels of tool support, and some may
+        require specific formatting or limitations. This method provides a
+        place to handle Ollama-specific tool adaptations, though the default
+        implementation passes tools through unchanged.
         
         Args:
-            system_prompt: System prompt to use
-            messages: Existing message history
-            startup_files_content: Optional startup file messages
-            emulate_system_prompt: Whether to force system prompt emulation
-            **kwargs: Additional arguments including model_string
+            tools: List of tool objects to adapt
+            model_string: Model string for potential model-specific adaptations
             
         Returns:
-            Dict[str, Any]: Dictionary of arguments for Agent constructor
+            List[Tool]: Tools adapted for Ollama (unchanged by default)
             
         Note:
-            The method automatically enables system prompt emulation for
-            certain models known to work better with this approach, including
-            TinyLlama, Orca-Mini, and other smaller models. This can be
-            overridden by explicitly setting emulate_system_prompt.
-            
-        Example:
-            The method will automatically detect models like::
-            
-                - "tinyllama" -> enables emulation
-                - "orca-mini" -> enables emulation  
-                - "llama2:70b" -> uses native system prompts
+            Tool support varies significantly across different Ollama models.
+            Some models may not support function calling at all, while others
+            may have specific requirements for tool schemas. This method
+            provides an extension point for model-specific adaptations.
         """
-        # Check if we should automatically emulate system prompts for certain models
-        model_string = kwargs.get('model_string', '')
+        logger.debug(f"OllamaAdapter.adapt_tools called with {len(tools) if tools else 0} tools, model_string='{model_string}'")
         
-        # Some older or smaller Ollama models don't handle system prompts well
-        auto_emulate_models = ['tinyllama', 'orca-mini']
-        if any(model in model_string.lower() for model in auto_emulate_models):
-            logger.debug(f"Auto-enabling system prompt emulation for Ollama model: {model_string}")
-            emulate_system_prompt = True
+        # Ollama tool support varies by model - for now, pass through unchanged
+        if tools:
+            logger.debug("Ollama adapter: Tools passed through without modification")
+            logger.debug(f"Note: Tool support varies across Ollama models. Model '{model_string}' may have limited tool capabilities.")
+        else:
+            logger.debug("No tools to adapt")
         
-        # Use parent class implementation with potentially modified emulation setting
-        return super().prepare_agent_args(
-            system_prompt=system_prompt,
-            messages=messages,
-            startup_files_content=startup_files_content,
-            emulate_system_prompt=emulate_system_prompt,
-            **kwargs
-        )
-
-    def get_model_info(self) -> Dict[str, Any]:
-        """
-        Get comprehensive model information for Ollama.
-        
-        Returns detailed information about the Ollama adapter and its
-        capabilities for debugging, logging, and monitoring purposes.
-        
-        Returns:
-            Dict[str, Any]: Dictionary containing model information including:
-            - framework: "ollama"
-            - provider: "ollama" 
-            - type: "local"
-            - description: Human-readable description
-            
-        Example:
-            >>> adapter.get_model_info()
-            {
-                "framework": "ollama",
-                "provider": "ollama",
-                "type": "local", 
-                "description": "Local model serving via Ollama"
-            }
-        """
-        return {
-            "framework": self.framework_name,
-            "provider": "ollama",
-            "type": "local",
-            "description": "Local model serving via Ollama"
-        }
+        logger.debug(f"Tool adaptation completed, returning {len(tools) if tools else 0} tools")
+        return tools

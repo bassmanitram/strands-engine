@@ -16,7 +16,8 @@ This adapter is designed for applications that need direct OpenAI integration
 without the overhead of proxy layers like LiteLLM.
 """
 
-from typing import Optional, Dict, Any, List
+from typing import List, Optional, Dict, Any
+from loguru import logger
 from strands.models.openai import OpenAIModel
 
 from .base_adapter import FrameworkAdapter
@@ -73,30 +74,8 @@ class OpenAIAdapter(FrameworkAdapter):
             Returns "openai" to identify this as the OpenAI adapter,
             distinguishing it from other framework adapters.
         """
+        logger.debug("OpenAIAdapter.framework_name called")
         return "openai"
-
-    def adapt_tools(self, tools: List[Tool]) -> List[Tool]:
-        """
-        Adapt tools for OpenAI function calling compatibility.
-        
-        OpenAI's function calling API has specific requirements for tool
-        schemas. This method ensures that tools are properly formatted
-        for OpenAI's expectations while preserving their functionality.
-        
-        Args:
-            tools: List of tool objects to adapt
-            
-        Returns:
-            List[Tool]: Tools adapted for OpenAI compatibility
-            
-        Note:
-            OpenAI generally has good tool schema compatibility, so this
-            method typically returns tools unchanged. Future versions
-            may add specific adaptations as needed.
-        """
-        # OpenAI generally has good tool compatibility
-        # Return tools unchanged for now
-        return tools
 
     def load_model(self, model_name: Optional[str] = None, model_config: Optional[Dict[str, Any]] = None) -> OpenAIModel:
         """
@@ -145,14 +124,57 @@ class OpenAIAdapter(FrameworkAdapter):
             OpenAI client constructor, while other parameters configure
             the model behavior.
         """
+        logger.debug(f"OpenAIAdapter.load_model called with model_name='{model_name}', model_config={model_config}")
+        
         model_config = model_config or {}
+        logger.debug(f"Using model_config: {model_config}")
         
         # Set model name if provided
         if model_name:
             model_config["model"] = model_name
-            
+            logger.debug(f"Set model_config['model'] to '{model_name}'")
+        
         # Extract client-specific arguments
         client_args = model_config.pop("client_args", None)
+        logger.debug(f"Extracted client_args: {client_args}")
+        logger.debug(f"Final model_config after client_args extraction: {model_config}")
         
         # Create and return the OpenAI model
-        return OpenAIModel(client_args=client_args, model_config=model_config)
+        logger.debug(f"Creating OpenAIModel with client_args={client_args}, model_config={model_config}")
+        model = OpenAIModel(client_args=client_args, model_config=model_config)
+        
+        logger.debug(f"OpenAIModel created successfully: {type(model).__name__}")
+        return model
+
+    def adapt_tools(self, tools: List[Tool], model_string: str) -> List[Tool]:
+        """
+        Adapt tools for OpenAI compatibility.
+        
+        OpenAI generally supports standard tool schemas without modification,
+        so this method performs minimal adaptation. The default implementation
+        returns tools unchanged, but could be extended for OpenAI-specific
+        optimizations or schema adjustments if needed.
+        
+        Args:
+            tools: List of tool objects to adapt
+            model_string: Model string for potential model-specific adaptations
+            
+        Returns:
+            List[Tool]: Tools adapted for OpenAI (unchanged by default)
+            
+        Note:
+            OpenAI's function calling API is generally compatible with
+            standard JSON schemas, so extensive adaptation is typically
+            not required. This method provides an extension point for
+            future OpenAI-specific tool optimizations.
+        """
+        logger.debug(f"OpenAIAdapter.adapt_tools called with {len(tools) if tools else 0} tools, model_string='{model_string}'")
+        
+        # OpenAI generally supports standard tool schemas without modification
+        if tools:
+            logger.debug("OpenAI adapter: Tools passed through without modification")
+        else:
+            logger.debug("No tools to adapt")
+        
+        logger.debug(f"Tool adaptation completed, returning {len(tools) if tools else 0} tools")
+        return tools

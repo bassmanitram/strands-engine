@@ -1,0 +1,277 @@
+"""
+LLM message generator for strands_agent_factory.
+
+This module provides functionality to generate strands-formatted message lists
+from input strings containing text and file references. File references use
+the format file('file_GLOB'[,optional_mimetype]) and are resolved to actual
+file content blocks.
+"""
+
+import re
+import glob
+from pathlib import Path
+from typing import List, Dict, Any, Tuple, Optional
+
+from loguru import logger
+from .utils import generate_file_content_block
+from .ptypes import PathLike
+
+
+def generate_llm_messages(input_string: str) -> List[Dict[str, Any]]:
+    """
+    Generate a strands-formatted message list from input string with file references.
+    
+    Parses an input string containing text and file() references, resolving
+    file globs and creating appropriate content blocks. Returns a single user
+    message containing all text and file content blocks in order.
+    
+    File reference format: file('file_glob'[,mimetype])
+    Examples:
+        - file('document.txt')
+        - file('*.py', 'text/plain')
+        - file('data/*.json', 'application/json')
+    
+    Args:
+        input_string: String containing text and file() references
+        
+    Returns:
+        List containing single user message dict with content blocks:
+        [{
+            "role": "user",
+            "content": [
+                {"text": "..."},
+                {"type": "file", "path": "...", "content": "..."},
+                ...
+            ]
+        }]
+        
+    Example:
+        >>> message = generate_llm_message("Analyze file('data.json') and summarize")
+        >>> len(message)
+        1
+        >>> message[0]["role"]
+        'user'
+    """
+    logger.debug(f"generate_llm_message called with input length: {len(input_string)}")
+    
+    # Parse file references and text segments
+    file_refs = _parse_file_references(input_string)
+    logger.debug(f"Found {len(file_refs)} file references")
+    
+    # Build content blocks in order
+    content_blocks = []
+    last_end = 0
+    
+    for glob_pattern, mimetype, start_pos, end_pos in file_refs:
+        # Add text content before this file reference
+        if start_pos > last_end:
+            text_segment = input_string[last_end:start_pos].strip()
+            if text_segment:
+                content_blocks.append(_create_text_content_block(text_segment))
+                logger.trace(f"Added text block: {text_segment[:50]}...")
+        
+        # Resolve file glob and create file content blocks
+        file_paths = _resolve_file_glob(glob_pattern, mimetype)
+        if file_paths:
+            file_blocks = _create_file_content_blocks(file_paths)
+            content_blocks.extend(file_blocks)
+            logger.debug(f"Added {len(file_blocks)} file blocks from glob: {glob_pattern}")
+        else:
+            # Add explanatory text if no files resolved
+            error_text = f"No files found matching pattern: {glob_pattern}"
+            content_blocks.append(_create_text_content_block(f"[{error_text}]"))
+            logger.warning(error_text)
+        
+        last_end = end_pos
+    
+    # Add any remaining text after the last file reference
+    if last_end < len(input_string):
+        text_segment = input_string[last_end:].strip()
+        if text_segment:
+            content_blocks.append(_create_text_content_block(text_segment))
+            logger.trace(f"Added final text block: {text_segment[:50]}...")
+    
+    # If no content blocks were created, add the entire input as text
+    if not content_blocks:
+        if input_string.strip():
+            content_blocks.append(_create_text_content_block(input_string.strip()))
+        else:
+            content_blocks.append(_create_text_content_block(""))
+    
+    # Return single user message with all content blocks
+    message = {
+        "role": "user",
+        "content": content_blocks
+    }
+    
+    logger.debug(f"Generated message with {len(content_blocks)} content blocks")
+    return [message]
+
+
+def paths_to_file_references(file_paths: List[Tuple[PathLike, Optional[str]]]) -> str:
+    """
+    Convert a list of file paths and mimetypes to file() reference string.
+    
+    Takes a list of (path, mimetype) tuples and converts them into a string
+    containing space-separated file() references that can be used with
+    generate_llm_messages().
+    
+    Args:
+        file_paths: List of (file_path, optional_mimetype) tuples
+        
+    Returns:
+        String containing file() references separated by spaces
+        
+    Example:
+        >>> paths = [("doc.txt", "text/plain"), ("data.json", None)]
+        >>> result = paths_to_file_references(paths)
+        >>> print(result)
+        "file('doc.txt', 'text/plain') file('data.json')"
+        
+        >>> # Can be used with generate_llm_messages
+        >>> message = generate_llm_messages(f"Process {result}")
+    """
+    if not file_paths:
+        return ""
+    
+    references = []
+    for file_path, mimetype in file_paths:
+        path_str = str(file_path)
+        
+        if mimetype:
+            # Include mimetype with single quotes
+            ref = f"file('{path_str}', '{mimetype}')"
+        else:
+            # Just the file path
+            ref = f"file('{path_str}')"
+        
+        references.append(ref)
+    
+    return " ".join(references)
+
+
+def _parse_file_references(text: str) -> List[Tuple[str, Optional[str], int, int]]:
+    """
+    Parse file() references from input text.
+    
+    Finds all file() references using regex and extracts the glob pattern
+    and optional mimetype from each reference.
+    
+    Args:
+        text: Input text to parse
+        
+    Returns:
+        List of tuples: (glob_pattern, mimetype, start_pos, end_pos)
+        where mimetype is None if not specified
+    """
+    # Regex pattern to match file('glob'[,mimetype])
+    # Supports both single and double quotes, optional mimetype
+    pattern = r"file\(\s*['\"]([^'\"]+)['\"](?:\s*,\s*['\"]([^'\"]*)['\"])?\s*\)"
+    
+    file_refs = []
+    for match in re.finditer(pattern, text, re.IGNORECASE):
+        glob_pattern = match.group(1)
+        mimetype = match.group(2) if match.group(2) else None
+        start_pos = match.start()
+        end_pos = match.end()
+        
+        file_refs.append((glob_pattern, mimetype, start_pos, end_pos))
+        logger.trace(f"Parsed file reference: glob='{glob_pattern}', mimetype='{mimetype}'")
+    
+    return file_refs
+
+
+def _resolve_file_glob(glob_pattern: str, mimetype: Optional[str]) -> List[Tuple[str, Optional[str]]]:
+    """
+    Resolve a file glob pattern to actual file paths.
+    
+    Uses glob.glob to expand patterns and filters out non-existent files.
+    Returns list of (filepath, mimetype) tuples where the same mimetype
+    is used for all resolved files from the glob.
+    
+    Args:
+        glob_pattern: File glob pattern to resolve
+        mimetype: Optional mimetype to use for all resolved files
+        
+    Returns:
+        List of (filepath, mimetype) tuples for existing files
+    """
+    logger.debug(f"Resolving glob pattern: {glob_pattern}")
+    
+    try:
+        # Resolve glob pattern
+        matched_paths = glob.glob(glob_pattern, recursive=True)
+        logger.debug(f"Glob matched {len(matched_paths)} paths")
+        
+        # Filter to existing files only
+        existing_files = []
+        for path in matched_paths:
+            path_obj = Path(path)
+            if path_obj.exists() and path_obj.is_file():
+                existing_files.append((str(path_obj.resolve()), mimetype))
+                logger.trace(f"Resolved file: {path_obj.resolve()}")
+            else:
+                logger.warning(f"File does not exist or is not a file: {path}")
+        
+        logger.debug(f"Resolved {len(existing_files)} existing files from glob: {glob_pattern}")
+        return existing_files
+        
+    except Exception as e:
+        logger.warning(f"Error resolving glob pattern '{glob_pattern}': {e}")
+        return []
+
+
+def _create_text_content_block(text: str) -> Dict[str, str]:
+    """
+    Create a text content block for strands message format.
+    
+    Args:
+        text: Text content for the block
+        
+    Returns:
+        Dict with text content block format: {"text": "..."}
+    """
+    return {
+        "text": text
+    }
+
+
+def _create_file_content_blocks(file_paths: List[Tuple[str, Optional[str]]]) -> List[Dict[str, Any]]:
+    """
+    Create file content blocks from resolved file paths.
+    
+    Uses utils.generate_file_content_block to create content blocks for each file.
+    Handles IO errors gracefully by creating explanatory text blocks instead.
+    
+    Args:
+        file_paths: List of (filepath, mimetype) tuples
+        
+    Returns:
+        List of content blocks (mix of file blocks and error text blocks)
+    """
+    content_blocks = []
+    
+    for file_path, mimetype in file_paths:
+        try:
+            logger.debug(f"Creating content block for file: {file_path} (mimetype: {mimetype})")
+            
+            path_obj = Path(file_path)
+            # Use mimetype from glob or detect automatically (pass None to let utils handle it)
+            file_block = generate_file_content_block(path_obj, mimetype or "")
+            
+            if file_block:
+                content_blocks.append(file_block)
+                logger.trace(f"Successfully created content block for: {file_path}")
+            else:
+                # generate_file_content_block returned None due to error
+                error_text = f"Failed to process file: {file_path}"
+                logger.warning(error_text)
+                content_blocks.append(_create_text_content_block(f"[{error_text}]"))
+            
+        except Exception as e:
+            # Create explanatory text block for failed file
+            error_text = f"Failed to read file '{file_path}': {str(e)}"
+            logger.warning(error_text)
+            content_blocks.append(_create_text_content_block(f"[{error_text}]"))
+    
+    return content_blocks
