@@ -2,17 +2,18 @@
 Tool factory implementation for strands_agent_factory.
 
 This module provides the ToolFactory class, which serves as the central coordinator
-for tool discovery, loading, and creation in strands_agent_factory. The factory uses a
-registry of adapters to support multiple tool types while providing consistent
+for tool discovery, loading, and specification creation in strands_agent_factory. The factory
+uses a registry of adapters to support multiple tool types while providing consistent
 error handling and resource management.
 
-The factory handles the complete tool lifecycle from configuration discovery
-through tool object creation, but does not execute tools. Tool execution is
-delegated entirely to strands-agents, maintaining clear separation of concerns.
+The factory handles the complete tool specification lifecycle from configuration discovery
+through tool spec creation, but does not create actual tool instances. Tool specification
+describes how tools should be loaded and executed later, maintaining clear separation of
+concerns between tool discovery and tool execution.
 
 Key capabilities:
 - Multi-source tool configuration loading (JSON/YAML files)
-- Adapter-based tool creation supporting MCP, Python, and custom types
+- Adapter-based tool specification creation supporting MCP, Python, and custom types
 - Comprehensive error handling and reporting
 - Resource lifecycle management via ExitStack integration
 - Detailed logging and debugging support
@@ -26,27 +27,28 @@ from loguru import logger
 
 from strands_agent_factory.utils import load_structured_file
 
-from ..ptypes import PathLike, Tool, ToolConfig, ToolCreationResult, ToolDiscoveryResult
-from .base_adapter import ToolAdapter
+from ..ptypes import PathLike, ToolConfig, ToolDiscoveryResult, ToolSpec
+from .base_adapter import ToolAdapter, ToolSpecCreationResult
 from .python_adapter import PythonToolAdapter
 from .mcp_adapters import MCPHTTPAdapter, MCPStdIOAdapter
 
 
 class ToolFactory:
     """
-    Centralized factory for tool discovery, loading, and creation.
+    Centralized factory for tool discovery, loading, and specification creation.
     
-    ToolFactory coordinates the complete tool management lifecycle for
-    strands_agent_factory, from configuration file discovery through tool object
+    ToolFactory coordinates the complete tool specification management lifecycle for
+    strands_agent_factory, from configuration file discovery through tool specification
     creation. It uses a registry of tool adapters to support multiple tool
     types while providing consistent error handling and resource management.
     
     The factory is designed around these principles:
     - Configuration-driven tool discovery and loading
     - Adapter pattern for extensible tool type support
+    - Tool specification creation (not actual tool instances)
     - Comprehensive error handling with detailed reporting
     - Resource lifecycle management via ExitStack integration
-    - Clear separation between tool loading and execution
+    - Clear separation between tool specification and execution
     
     Supported tool types:
     - "python": Native Python functions and modules
@@ -54,10 +56,10 @@ class ToolFactory:
     - "mcp-http": Model Context Protocol via HTTP transport
     - "mcp": Auto-detect MCP transport based on configuration
     
-    The factory loads and configures tools for strands-agents but never
-    executes them directly. This separation ensures clean architecture
-    boundaries and allows strands-agents to handle tool execution with
-    its own security and error handling mechanisms.
+    The factory creates tool specifications that describe how to load and execute
+    tools, but never executes tools directly. This separation ensures clean
+    architecture boundaries and allows strands-agents to handle tool execution
+    with its own security and error handling mechanisms.
     
     Attributes:
         _adapters: Registry of tool adapters by type
@@ -71,10 +73,10 @@ class ToolFactory:
                 # Load configurations from files
                 configs, result = factory.load_tool_configs(["/path/to/tools/"])
                 
-                # Create tool objects
-                tools = factory.create_tools(configs)
+                # Create tool specifications
+                tool_specs = factory.create_tool_specs(configs)
                 
-                # Tools are now ready for strands-agents to use
+                # Tool specs are now ready for strands-agents to process
     """
 
     def __init__(self, exit_stack: ExitStack):
@@ -102,14 +104,14 @@ class ToolFactory:
             "mcp-http": MCPHTTPAdapter(exit_stack)
         }
 
-    def create_tools(self, tool_configs: List[ToolConfig]) -> List[ToolCreationResult]:
+    def create_tool_specs(self, tool_configs: List[ToolConfig]) -> List[ToolSpecCreationResult]:
         """
-        Create tools from a list of tool configurations.
+        Create tool specifications from a list of tool configurations.
         
-        Processes multiple tool configurations to create tool objects using
+        Processes multiple tool configurations to create tool specifications using
         the appropriate adapters. This is the main entry point for bulk tool
-        creation, handling configuration validation, adapter selection, and
-        comprehensive error reporting.
+        specification creation, handling configuration validation, adapter selection,
+        and comprehensive error reporting.
         
         The method:
         1. Filters out disabled tool configurations
@@ -121,12 +123,10 @@ class ToolFactory:
             tool_configs: List of validated tool configuration dictionaries
             
         Returns:
-            List[ToolCreationResult]: Results from each tool creation attempt,
+            List[ToolSpecCreationResult]: Results from each tool spec creation attempt,
             including both successful and failed creations. Each result contains:
-            - tools: Successfully created tool objects
+            - tool_spec: Successfully created tool specification (or None)
             - requested_functions: Functions that were requested
-            - found_functions: Functions that were actually created
-            - missing_functions: Requested functions that couldn't be found
             - error: Error message if creation failed
             
         Example:
@@ -137,13 +137,13 @@ class ToolFactory:
                     {"id": "web", "type": "mcp", "command": "web-server", "args": []}
                 ]
                 
-                results = factory.create_tools(configs)
+                results = factory.create_tool_specs(configs)
                 
                 for result in results:
                     if result.error:
                         print(f"Failed: {result.error}")
                     else:
-                        print(f"Created {len(result.tools)} tools")
+                        print(f"Created tool spec: {result.tool_spec['type']}")
                         
         Note:
             Configurations marked with "disabled": true are automatically
@@ -158,33 +158,31 @@ class ToolFactory:
                 logger.info(f"Skipping disabled tool: {tool_config.get('id', 'unknown')}")
                 continue
                 
-            logger.debug(f"Creating tools for config: {tool_config.get('id', 'unknown')}")
+            logger.debug(f"Creating tool spec for config: {tool_config.get('id', 'unknown')}")
             
             try:
-                result = self.create_tools_from_config(tool_config)
+                result = self.create_tool_spec_from_config(tool_config)
                 creation_results.append(result)
 
             except Exception as e:
-                message = f"Exception loading tools from '{tool_config.get('id', 'unknown')}': {e}"
-                creation_results.append(ToolCreationResult(
-                    tools=[],
+                message = f"Exception creating tool spec from '{tool_config.get('id', 'unknown')}': {e}"
+                creation_results.append(ToolSpecCreationResult(
+                    tool_spec=None,
                     requested_functions=tool_config.get("functions", []),
-                    found_functions=[],
-                    missing_functions=tool_config.get("functions", []),
                     error=message
                 ))
                 logger.error(message)
         
         return creation_results
 
-    def create_tools_from_config(self, config: Dict[str, Any]) -> ToolCreationResult:
+    def create_tool_spec_from_config(self, config: Dict[str, Any]) -> ToolSpecCreationResult:
         """
-        Create tools from a single configuration dictionary.
+        Create tool specification from a single configuration dictionary.
         
-        Processes a single tool configuration to create tool objects using
+        Processes a single tool configuration to create a tool specification using
         the appropriate adapter. This method handles adapter selection,
         including special logic for MCP transport detection, and delegates
-        the actual tool creation to the selected adapter.
+        the actual tool specification creation to the selected adapter.
         
         Tool type selection logic:
         - "python": Uses PythonToolAdapter directly
@@ -199,13 +197,13 @@ class ToolFactory:
                    - Additional fields specific to the tool type
                    
         Returns:
-            ToolCreationResult: Detailed result of the tool creation process
+            ToolSpecCreationResult: Detailed result of the tool spec creation process
             
         Raises:
-            Exception: Propagated from adapter.create() if tool creation fails
+            Exception: Propagated from adapter.create() if tool spec creation fails
             
         Example:
-            Creating tools from configuration::
+            Creating tool spec from configuration::
             
                 config = {
                     "id": "calculator",
@@ -214,9 +212,9 @@ class ToolFactory:
                     "functions": ["add", "subtract", "multiply"]
                 }
                 
-                result = factory.create_tools_from_config(config)
+                result = factory.create_tool_spec_from_config(config)
                 if not result.error:
-                    print(f"Created {len(result.tools)} calculator tools")
+                    print(f"Created {result.tool_spec['type']} tool spec")
                     
         Note:
             For MCP configurations with type "mcp", the method automatically
@@ -233,25 +231,21 @@ class ToolFactory:
                 tool_type = "mcp-http"
             else:
                 logger.error(f"MCP config for '{config.get('id')}' is missing 'url' or 'command'. Cannot connect.")
-                return ToolCreationResult(
-                    tools=[],
+                return ToolSpecCreationResult(
+                    tool_spec=None,
                     requested_functions=config.get("functions", []),
-                    found_functions=[],
-                    missing_functions=config.get("functions", []),
                     error="MCP config missing 'url' or 'command'"
                 )
 
         adapter = self._adapters.get(tool_type)
         if adapter:
-            logger.debug(f"Creating tools using {tool_type} adapter for '{config.get('id')}'")
+            logger.debug(f"Creating tool spec using {tool_type} adapter for '{config.get('id')}'")
             return adapter.create(config)
         else:
             logger.warning(f"Tool '{config.get('id')}' has unknown type '{tool_type}'. Skipping.")
-            return ToolCreationResult(
-                tools=[],
+            return ToolSpecCreationResult(
+                tool_spec=None,
                 requested_functions=config.get("functions", []),
-                found_functions=[],
-                missing_functions=config.get("functions", []),
                 error=f"Unknown tool type '{tool_type}'"
             )
 
@@ -303,9 +297,9 @@ class ToolFactory:
                     
         Note:
             The method only validates configuration file structure and required
-            fields. It does not validate that tools can actually be created or
+            fields. It does not validate that tool specs can actually be created or
             that referenced modules/servers are available. That validation
-            occurs during tool creation.
+            occurs during tool specification creation.
         """
         path_list = file_paths or []
 
@@ -343,3 +337,23 @@ class ToolFactory:
 
         logger.info(f"Tool discovery complete: {len(successful_configs)} successful, {len(failed_configs)} failed from {len(path_list)} files")
         return successful_configs, discovery_result
+
+    # Backward compatibility method
+    def create_tools(self, tool_configs: List[ToolConfig]) -> List[ToolSpecCreationResult]:
+        """
+        Backward compatibility method - creates tool specifications.
+        
+        This method provides backward compatibility with the old interface
+        while actually creating tool specifications instead of tool instances.
+        
+        Args:
+            tool_configs: List of validated tool configuration dictionaries
+            
+        Returns:
+            List[ToolSpecCreationResult]: Results from tool spec creation
+            
+        Note:
+            This method is deprecated. Use create_tool_specs() instead.
+        """
+        logger.warning("create_tools() is deprecated. Use create_tool_specs() instead.")
+        return self.create_tool_specs(tool_configs)

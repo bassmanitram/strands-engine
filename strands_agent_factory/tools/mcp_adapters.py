@@ -1,57 +1,149 @@
 """
 Model Context Protocol (MCP) tool adapters for strands_agent_factory.
 
-This module provides adapters for connecting to MCP servers and loading their
-tools for use by strands-agents. MCP is a protocol that enables AI agents to
-securely connect to external systems and access their capabilities through
-standardized tool interfaces.
+This module provides adapters for creating MCP tool specifications that can later
+be used to connect to MCP servers and load tools for strands-agents. MCP is a protocol
+that enables AI agents to securely connect to external systems and access their
+capabilities through standardized tool interfaces.
 
 The MCP adapters support both transport mechanisms defined by the MCP specification:
 - stdio: Communication via standard input/output with a subprocess
 - HTTP: Communication via HTTP/SSE with a web service
 
-Both adapters handle connection management, tool discovery, and resource cleanup
-while providing comprehensive error handling and logging. The loaded tools are
-made available to strands-agents for execution, maintaining the clean separation
-between tool loading (engine) and tool execution (strands-agents).
+Both adapters create tool specifications that encapsulate connection parameters
+and configuration while deferring actual connection establishment until tool
+execution time. This provides comprehensive error handling and logging while
+maintaining the clean separation between tool loading (engine) and tool execution
+(strands-agents).
 
 Key features:
 - Support for both stdio and HTTP MCP transports
 - Selective tool loading via function filtering
-- Connection lifecycle management via ExitStack
+- Deferred connection establishment for better resource management
 - Comprehensive error handling and logging
 - Integration with strands-agents MCP client infrastructure
 """
 
 import os
-from typing import Any, Dict
+from typing import Any, Dict, List, Optional, Callable
 
 from loguru import logger
 
-from ..ptypes import ToolCreationResult
-from .base_adapter import ToolAdapter
+from ..ptypes import MCPToolSpec
+from .base_adapter import ToolAdapter, ToolSpecCreationResult
+
+# Import strands MCPClient at module level for subclassing
+try:
+    from strands.tools.mcp import MCPClient as StrandsMCPClient
+    _STRANDS_MCP_AVAILABLE = True
+except ImportError:
+    _STRANDS_MCP_AVAILABLE = False
+    StrandsMCPClient = object  # Fallback for type hints
+
+
+class MCPClient(StrandsMCPClient):
+    """
+    Enhanced strands MCPClient with built-in tool filtering.
+    
+    This class extends the strands MCPClient to provide transparent tool filtering
+    based on requested function names. It inherits all strands MCPClient functionality
+    while adding filtering capabilities to the list_tools_sync method.
+    
+    The client handles:
+    - All standard strands MCPClient functionality via inheritance
+    - Transparent tool filtering in list_tools_sync
+    - Server identification for logging and debugging
+    - Proper context manager lifecycle inherited from parent
+    """
+    
+    def __init__(self, server_id: str, transport_callable: Callable, requested_functions: Optional[List[str]] = None):
+        """
+        Initialize enhanced MCP client with filtering capabilities.
+        
+        Args:
+            server_id: Unique identifier for this MCP server
+            transport_callable: Callable that returns transport context manager
+            requested_functions: Optional list of specific tool names to filter
+        """
+        if not _STRANDS_MCP_AVAILABLE:
+            raise ImportError("MCP dependencies not installed - cannot create MCPClient")
+            
+        self.server_id = server_id
+        self.requested_functions = requested_functions or []
+        
+        # Initialize the parent strands MCPClient
+        super().__init__(transport_callable)
+        
+    def __enter__(self):
+        """Enhanced context manager with logging."""
+        result = super().__enter__()
+        logger.debug(f"Successfully connected to MCP server: {self.server_id}")
+        return result
+        
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        """Enhanced context manager cleanup with logging."""
+        try:
+            result = super().__exit__(exc_type, exc_val, exc_tb)
+            logger.debug(f"Disconnected from MCP server: {self.server_id}")
+            return result
+        except Exception as e:
+            logger.warning(f"Error during MCP server cleanup for {self.server_id}: {e}")
+            raise
+    
+    def list_tools_sync(self, pagination_token: Optional[str] = None):
+        """
+        List tools from MCP server with automatic filtering.
+        
+        This method extends the parent list_tools_sync() by applying
+        filtering based on requested_functions if specified. Tools are filtered
+        by matching tool names against the requested function list.
+        
+        Args:
+            pagination_token: Optional pagination token for large tool lists
+            
+        Returns:
+            Filtered list of MCPAgentTool objects matching requested functions
+        """
+        try:
+            # Get all available tools from the parent class
+            all_tools = super().list_tools_sync(pagination_token)
+            
+            # Apply filtering if specific functions were requested
+            if self.requested_functions:
+                filtered_tools = []
+                found_functions = []
+
+                for requested_func in self.requested_functions:
+                    for tool in all_tools:
+                        # Use tool_name property to match against requested functions
+                        if tool.tool_name == requested_func:
+                            filtered_tools.append(tool)
+                            found_functions.append(requested_func)
+                            break
+                    else:
+                        # Log warning if requested function not found
+                        logger.warning(f"MCP server '{self.server_id}' does not provide requested function '{requested_func}'")
+
+                logger.debug(f"Filtered {len(filtered_tools)} tools from {len(all_tools)} available on {self.server_id}")
+                return filtered_tools
+            else:
+                # No filtering requested, return all tools
+                logger.debug(f"Returning all {len(all_tools)} tools from {self.server_id}")
+                return all_tools
+                
+        except Exception as e:
+            logger.error(f"Failed to list tools from MCP server {self.server_id}: {e}")
+            raise
 
 
 class MCPStdIOAdapter(ToolAdapter):
     """
-    Adapter for loading tools from MCP servers via stdio transport.
+    Adapter for creating MCP tool specifications for stdio transport servers.
     
-    MCPStdIOAdapter connects to MCP servers that communicate via standard
-    input/output streams. This is typically used for local tools, scripts,
-    or command-line utilities that implement the MCP protocol.
-    
-    The adapter:
-    - Manages subprocess lifecycle for MCP server processes
-    - Handles environment variable configuration
-    - Provides connection pooling and resource cleanup
-    - Supports selective tool loading via function filtering
-    - Integrates with strands-agents MCP client infrastructure
-    
-    stdio transport is particularly useful for:
-    - Local development and testing
-    - Sandboxed tool execution
-    - Integration with existing command-line tools
-    - Scenarios requiring process isolation
+    MCPStdIOAdapter creates tool specifications for MCP clients configured for
+    stdio transport. These specifications can later be used to establish connections
+    to MCP servers via standard input/output streams, typically used for local
+    tools, scripts, or command-line utilities.
     
     Configuration format:
         {
@@ -62,107 +154,34 @@ class MCPStdIOAdapter(ToolAdapter):
             "env": {"API_KEY": "secret"},
             "functions": ["tool1", "tool2"]  # Optional filtering
         }
-        
-    Example:
-        Loading tools from a Python MCP server::
-        
-            config = {
-                "id": "file_tools",
-                "type": "mcp-stdio", 
-                "command": "python",
-                "args": ["-m", "file_server"],
-                "env": {"WORK_DIR": "/tmp"},
-                "functions": ["read_file", "write_file"]
-            }
-            
-            result = adapter.create(config)
-            if not result.error:
-                print(f"Loaded {len(result.tools)} file tools")
     """
 
-    def create(self, config: Dict[str, Any]) -> ToolCreationResult:
+    def create(self, config: Dict[str, Any]) -> ToolSpecCreationResult:
         """
-        Create tools from an MCP server via stdio transport.
+        Create MCP tool specification for stdio transport server.
         
-        Establishes a stdio connection to an MCP server process and loads
-        the available tools. The method handles process management,
-        environment configuration, and tool discovery while providing
-        detailed error reporting.
-        
-        The creation process:
-        1. Validates configuration parameters
-        2. Sets up process environment variables
-        3. Creates stdio transport parameters
-        4. Establishes connection to MCP server
-        5. Discovers available tools from the server
-        6. Filters tools if specific functions were requested
-        7. Registers cleanup handlers for proper resource management
+        Creates an MCPToolSpec containing an MCPClient configured for stdio transport.
+        The client stores connection parameters but doesn't establish the connection
+        until it's used as a context manager during tool execution.
         
         Args:
-            config: MCP stdio configuration dictionary containing:
-                   - id: Unique identifier for the server
-                   - command: Command to execute for the MCP server
-                   - args: Command line arguments (optional)
-                   - env: Environment variables for the process (optional)
-                   - functions: Specific functions to load (optional)
+            config: MCP stdio configuration dictionary
                    
         Returns:
-            ToolCreationResult: Detailed result containing:
-            - tools: Successfully loaded MCP tool objects
-            - requested_functions: Function names that were requested
-            - found_functions: Function names that were found on the server
-            - missing_functions: Requested functions not found on the server
-            - error: Error message if connection or loading failed
-            
-        Example:
-            Successful tool loading::
-            
-                config = {
-                    "id": "calc_server",
-                    "command": "python",
-                    "args": ["-m", "calculator_mcp"],
-                    "functions": ["add", "subtract"]
-                }
-                
-                result = adapter.create(config)
-                # result.tools contains MCP tool objects
-                # result.found_functions = ["add", "subtract"]
-                # result.missing_functions = []
-                
-            Partial success with missing functions::
-            
-                config = {
-                    "id": "calc_server", 
-                    "command": "python",
-                    "args": ["-m", "calculator_mcp"],
-                    "functions": ["add", "nonexistent"]
-                }
-                
-                result = adapter.create(config)
-                # result.tools contains 1 tool object
-                # result.found_functions = ["add"]
-                # result.missing_functions = ["nonexistent"]
-                
-        Note:
-            The method uses the ExitStack to ensure proper cleanup of the
-            MCP server process when the adapter scope ends. Tools are loaded
-            and configured but not executed - execution is handled by strands-agents.
+            ToolSpecCreationResult with tool_spec containing MCPToolSpec
         """
         server_id = config.get("id", "unknown-stdio-server")
-        logger.debug(f"Starting MCP server '{server_id}' with command: {config.get('command')}")
+        logger.debug(f"Creating MCP stdio tool spec for server: {server_id}")
 
         try:
-            # Import MCP dependencies when needed (lazy loading)
+            # Import MCP dependencies to validate availability
             from mcp import StdioServerParameters
-            from strands.tools.mcp import MCPClient
             from mcp.client.stdio import stdio_client
         except ImportError as e:
             logger.error(f"MCP dependencies not available: {e}")
-            return ToolCreationResult(
-                tools=[],
+            return ToolSpecCreationResult(
+                tool_spec=None,
                 requested_functions=config.get("functions", []),
-                found_functions=[],
-                missing_functions=config.get("functions", []),
                 error="MCP dependencies not installed"
             )
 
@@ -178,81 +197,38 @@ class MCPStdIOAdapter(ToolAdapter):
             env=process_env
         )
 
-        def create_stdio_client():
+        def create_stdio_transport():
             return stdio_client(params)
 
-        try:
-            # Create MCP client with automatic resource management
-            client = self.exit_stack.enter_context(MCPClient(create_stdio_client))
-            all_tools = client.list_tools_sync()
+        # Create MCPClient subclass (connection deferred until context entry)
+        mcp_client = MCPClient(
+            server_id=server_id,
+            transport_callable=create_stdio_transport,
+            requested_functions=config.get("functions", [])
+        )
 
-            # Handle function filtering if specific functions were requested
-            requested_functions = config.get("functions", [])
-            if requested_functions:
-                # Filter tools to only include requested functions
-                found_functions = []
-                filtered_tools = []
+        # Create MCPToolSpec
+        tool_spec: MCPToolSpec = {
+            "type": "mcp",
+            "client": mcp_client
+        }
 
-                for requested_func in requested_functions:
-                    found = False
-                    for tool in all_tools:
-                        if hasattr(tool, 'tool_spec') and tool.tool_spec.get('name') == requested_func:
-                            filtered_tools.append(tool)
-                            found_functions.append(requested_func)
-                            found = True
-                            break
-                    if not found:
-                        logger.warning(f"MCP server '{server_id}' does not provide requested function '{requested_func}'")
-
-                missing_functions = [f for f in requested_functions if f not in found_functions]
-                tools_to_return = filtered_tools
-            else:
-                # No specific functions requested, return all available tools
-                requested_functions = []
-                found_functions = [tool.tool_spec.get('name', 'unnamed') for tool in all_tools if hasattr(tool, 'tool_spec')]
-                missing_functions = []
-                tools_to_return = all_tools
-
-            logger.info(f"Successfully loaded {len(tools_to_return)} tools from MCP server: {server_id}")
-            return ToolCreationResult(
-                tools=tools_to_return,
-                requested_functions=requested_functions,
-                found_functions=found_functions,
-                missing_functions=missing_functions,
-                error=None
-            )
-            
-        except Exception as e:
-            logger.error(f"Failed to connect to MCP server {server_id}: {e}")
-            return ToolCreationResult(
-                tools=[],
-                requested_functions=config.get("functions", []),
-                found_functions=[],
-                missing_functions=config.get("functions", []),
-                error=str(e)
-            )
+        logger.info(f"Created MCP stdio tool spec for server: {server_id}")
+        return ToolSpecCreationResult(
+            tool_spec=tool_spec,
+            requested_functions=config.get("functions", []),
+            error=None
+        )
 
 
 class MCPHTTPAdapter(ToolAdapter):
     """
-    Adapter for loading tools from MCP servers via HTTP transport.
+    Adapter for creating MCP tool specifications for HTTP transport servers.
     
-    MCPHTTPAdapter connects to MCP servers that communicate via HTTP and
-    Server-Sent Events (SSE). This is typically used for web services,
-    APIs, or remote tools that implement the MCP protocol over HTTP.
-    
-    The adapter:
-    - Manages HTTP connection lifecycle and configuration
-    - Handles authentication and connection parameters
-    - Provides connection pooling and error recovery
-    - Supports selective tool loading via function filtering
-    - Integrates with strands-agents MCP client infrastructure
-    
-    HTTP transport is particularly useful for:
-    - Remote service integration
-    - Scalable tool deployment
-    - Cloud-based tool services
-    - Scenarios requiring network-based tool access
+    MCPHTTPAdapter creates tool specifications for MCP clients configured for
+    HTTP transport. These specifications can later be used to establish connections
+    to MCP servers via HTTP and Server-Sent Events, typically used for web services,
+    APIs, or remote tools.
     
     Configuration format:
         {
@@ -261,151 +237,56 @@ class MCPHTTPAdapter(ToolAdapter):
             "url": "https://api.example.com/mcp",
             "functions": ["tool1", "tool2"]  # Optional filtering
         }
-        
-    Example:
-        Loading tools from an HTTP MCP server::
-        
-            config = {
-                "id": "web_tools",
-                "type": "mcp-http",
-                "url": "https://tools.example.com/mcp",
-                "functions": ["web_search", "url_fetch"]
-            }
-            
-            result = adapter.create(config)
-            if not result.error:
-                print(f"Loaded {len(result.tools)} web tools")
     """
 
-    def create(self, config: Dict[str, Any]) -> ToolCreationResult:
+    def create(self, config: Dict[str, Any]) -> ToolSpecCreationResult:
         """
-        Create tools from an MCP server via HTTP transport.
+        Create MCP tool specification for HTTP transport server.
         
-        Establishes an HTTP connection to an MCP server and loads the
-        available tools. The method handles connection management,
-        authentication, and tool discovery while providing detailed
-        error reporting.
-        
-        The creation process:
-        1. Validates configuration parameters
-        2. Creates HTTP transport client
-        3. Establishes connection to MCP server
-        4. Discovers available tools from the server
-        5. Filters tools if specific functions were requested
-        6. Registers cleanup handlers for proper connection management
+        Creates an MCPToolSpec containing an MCPClient configured for HTTP transport.
+        The client stores connection parameters but doesn't establish the connection
+        until it's used as a context manager during tool execution.
         
         Args:
-            config: MCP HTTP configuration dictionary containing:
-                   - id: Unique identifier for the server
-                   - url: HTTP endpoint URL for the MCP server
-                   - functions: Specific functions to load (optional)
+            config: MCP HTTP configuration dictionary
                    
         Returns:
-            ToolCreationResult: Detailed result containing:
-            - tools: Successfully loaded MCP tool objects
-            - requested_functions: Function names that were requested
-            - found_functions: Function names that were found on the server
-            - missing_functions: Requested functions not found on the server
-            - error: Error message if connection or loading failed
-            
-        Example:
-            Successful tool loading::
-            
-                config = {
-                    "id": "api_tools",
-                    "url": "https://tools.example.com/mcp",
-                    "functions": ["search", "translate"]
-                }
-                
-                result = adapter.create(config)
-                # result.tools contains MCP tool objects
-                # result.found_functions = ["search", "translate"]
-                # result.missing_functions = []
-                
-            Connection failure::
-            
-                config = {
-                    "id": "api_tools",
-                    "url": "https://invalid.example.com/mcp"
-                }
-                
-                result = adapter.create(config)
-                # result.tools = []
-                # result.error = "Connection failed: ..."
-                
-        Note:
-            The method uses the ExitStack to ensure proper cleanup of HTTP
-            connections when the adapter scope ends. Tools are loaded and
-            configured but not executed - execution is handled by strands-agents.
+            ToolSpecCreationResult with tool_spec containing MCPToolSpec
         """
         server_id = config.get("id", "unknown-http-server")
         url = config.get("url")
-        logger.debug(f"Connecting to MCP server '{server_id}' via HTTP at {url}")
+        logger.debug(f"Creating MCP HTTP tool spec for server: {server_id} at {url}")
 
         try:
-            # Import MCP dependencies when needed (lazy loading)
-            from strands.tools.mcp import MCPClient
+            # Import MCP dependencies to validate availability
             from mcp.client.streamable_http import streamablehttp_client
         except ImportError as e:
             logger.error(f"MCP dependencies not available: {e}")
-            return ToolCreationResult(
-                tools=[],
+            return ToolSpecCreationResult(
+                tool_spec=None,
                 requested_functions=config.get("functions", []),
-                found_functions=[],
-                missing_functions=config.get("functions", []),
                 error="MCP dependencies not installed"
             )
 
-        def create_http_client():
+        def create_http_transport():
             return streamablehttp_client(url)
 
-        try:
-            # Create MCP client with automatic resource management
-            client = self.exit_stack.enter_context(MCPClient(create_http_client))
-            all_tools = client.list_tools_sync()
+        # Create MCPClient subclass (connection deferred until context entry)
+        mcp_client = MCPClient(
+            server_id=server_id,
+            transport_callable=create_http_transport,
+            requested_functions=config.get("functions", [])
+        )
 
-            # Handle function filtering if specific functions were requested
-            requested_functions = config.get("functions", [])
-            if requested_functions:
-                # Filter tools to only include requested functions
-                found_functions = []
-                filtered_tools = []
+        # Create MCPToolSpec
+        tool_spec: MCPToolSpec = {
+            "type": "mcp",
+            "client": mcp_client
+        }
 
-                for requested_func in requested_functions:
-                    found = False
-                    for tool in all_tools:
-                        if hasattr(tool, 'tool_spec') and tool.tool_spec.get('name') == requested_func:
-                            filtered_tools.append(tool)
-                            found_functions.append(requested_func)
-                            found = True
-                            break
-                    if not found:
-                        logger.warning(f"MCP server '{server_id}' does not provide requested function '{requested_func}'")
-
-                missing_functions = [f for f in requested_functions if f not in found_functions]
-                tools_to_return = filtered_tools
-            else:
-                # No specific functions requested, return all available tools
-                requested_functions = []
-                found_functions = [tool.tool_spec.get('name', 'unnamed') for tool in all_tools if hasattr(tool, 'tool_spec')]
-                missing_functions = []
-                tools_to_return = all_tools
-
-            logger.info(f"Successfully loaded {len(tools_to_return)} tools from MCP server: {server_id}")
-            return ToolCreationResult(
-                tools=tools_to_return,
-                requested_functions=requested_functions,
-                found_functions=found_functions,
-                missing_functions=missing_functions,
-                error=None
-            )
-            
-        except Exception as e:
-            logger.error(f"Failed to connect to MCP server {server_id}: {e}")
-            return ToolCreationResult(
-                tools=[],
-                requested_functions=config.get("functions", []),
-                found_functions=[],
-                missing_functions=config.get("functions", []),
-                error=str(e)
-            )
+        logger.info(f"Created MCP HTTP tool spec for server: {server_id}")
+        return ToolSpecCreationResult(
+            tool_spec=tool_spec,
+            requested_functions=config.get("functions", []),
+            error=None
+        )

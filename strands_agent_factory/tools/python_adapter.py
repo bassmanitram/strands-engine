@@ -1,13 +1,14 @@
 """
 Python tool adapter for strands_agent_factory.
 
-This module provides the PythonToolAdapter class, which enables loading and
-configuring Python functions as tools for strands-agents to execute. The
+This module provides the PythonToolAdapter class, which creates tool specifications
+for Python functions that can later be loaded and executed by strands-agents. The
 adapter supports both installed packages and local modules, with flexible
 path resolution and dynamic importing capabilities.
 
 The Python adapter handles:
-- Dynamic module and function importing
+- Tool specification creation for Python functions
+- Dynamic module and function importing for validation
 - Custom package path resolution for local modules
 - Function validation and error handling
 - Tool metadata extraction and configuration
@@ -26,8 +27,8 @@ from typing import Any, Callable, Dict, Optional
 
 from loguru import logger
 
-from ..ptypes import ToolCreationResult
-from .base_adapter import ToolAdapter
+from ..ptypes import StandardToolSpec
+from .base_adapter import ToolAdapter, ToolSpecCreationResult
 
 
 def _import_item(
@@ -126,15 +127,16 @@ def _import_item(
 
 class PythonToolAdapter(ToolAdapter):
     """
-    Tool adapter for loading Python functions as strands-agents tools.
+    Tool adapter for creating specifications for Python function tools.
     
-    PythonToolAdapter enables the integration of Python functions and modules
-    as tools that can be executed by strands-agents. It supports both installed
+    PythonToolAdapter creates tool specifications for Python functions that
+    can later be loaded and executed by strands-agents. It supports both installed
     packages and local modules with flexible path resolution and comprehensive
     error handling.
     
     The adapter handles:
-    - Dynamic importing of Python modules and functions
+    - Tool specification creation for Python functions
+    - Dynamic importing for validation (without persistent loading)
     - Custom package path resolution for local development
     - Function validation and metadata extraction
     - Comprehensive error reporting and debugging
@@ -144,6 +146,7 @@ class PythonToolAdapter(ToolAdapter):
     - Support for both installed and local Python modules
     - Flexible function specification (individual functions or module methods)
     - Custom package path support for project-specific tools
+    - Validation of function accessibility without persistent loading
     - Detailed success/failure reporting with function-level granularity
     - Resource cleanup integration via ExitStack
     
@@ -158,7 +161,7 @@ class PythonToolAdapter(ToolAdapter):
         }
         
     Example:
-        Loading tools from installed package::
+        Creating specs for tools from installed package::
         
             config = {
                 "id": "math_tools",
@@ -170,9 +173,9 @@ class PythonToolAdapter(ToolAdapter):
             
             result = adapter.create(config)
             if not result.error:
-                print(f"Loaded {len(result.tools)} math tools")
+                print(f"Created tool spec for {len(result.tool_spec.functions)} math tools")
                 
-        Loading tools from local module::
+        Creating specs for tools from local module::
         
             config = {
                 "id": "local_tools", 
@@ -186,20 +189,20 @@ class PythonToolAdapter(ToolAdapter):
             result = adapter.create(config)
     """
 
-    def create(self, config: Dict[str, Any], schema_normalizer=None) -> ToolCreationResult:
+    def create(self, config: Dict[str, Any], schema_normalizer=None) -> ToolSpecCreationResult:
         """
-        Create tools from Python modules based on configuration.
+        Create tool specification for Python functions based on configuration.
         
-        Loads the specified Python functions from modules and creates tool
-        objects that can be executed by strands-agents. The method handles
-        dynamic importing, path resolution, and provides detailed reporting
-        of success and failure cases.
+        Creates a tool specification that describes how to load and execute
+        Python functions as tools. The method validates that functions are
+        accessible but does not persistently load them - actual loading is
+        deferred until tool execution time.
         
         The creation process:
         1. Validates required configuration fields
         2. Resolves module and package paths
-        3. Dynamically imports requested functions
-        4. Creates tool objects for successful imports
+        3. Validates that requested functions are accessible
+        4. Creates StandardToolSpec with tool instances
         5. Reports detailed success/failure information
         
         Args:
@@ -212,15 +215,13 @@ class PythonToolAdapter(ToolAdapter):
             schema_normalizer: Optional schema normalizer (unused, for interface compatibility)
             
         Returns:
-            ToolCreationResult: Detailed result containing:
-            - tools: Successfully loaded Python function objects
+            ToolSpecCreationResult: Result containing:
+            - tool_spec: StandardToolSpec with loaded tool instances
             - requested_functions: Function names that were requested
-            - found_functions: Function names that were successfully loaded
-            - missing_functions: Requested functions that couldn't be loaded
             - error: Error message if overall creation failed
             
         Example:
-            Successful tool creation::
+            Successful tool spec creation::
             
                 config = {
                     "id": "calc",
@@ -230,30 +231,27 @@ class PythonToolAdapter(ToolAdapter):
                 }
                 
                 result = adapter.create(config)
-                # result.tools contains 3 function objects
-                # result.found_functions = ["add", "subtract", "multiply"]
-                # result.missing_functions = []
+                # result.tool_spec contains StandardToolSpec with 3 functions
+                # result.requested_functions = ["add", "subtract", "multiply"]
                 # result.error = None
                 
-            Partial success with missing functions::
+            Configuration error::
             
                 config = {
                     "id": "calc",
-                    "module_path": "tools.math", 
-                    "functions": ["add", "nonexistent", "multiply"],
+                    # Missing module_path
+                    "functions": ["add", "subtract"],
                     "source_file": "/config/tools.json"
                 }
                 
                 result = adapter.create(config)
-                # result.tools contains 2 function objects
-                # result.found_functions = ["add", "multiply"]
-                # result.missing_functions = ["nonexistent"]
-                # result.error = None (partial success)
+                # result.tool_spec = None
+                # result.error = "Missing required configuration fields"
                 
         Note:
-            The method supports both simple function names ("add") and nested
-            function paths ("utils.helper.format"). Functions are loaded and
-            validated but not executed - execution is handled by strands-agents.
+            The method loads Python functions immediately to create tool instances.
+            This differs from MCP tools which defer connection until execution time.
+            Functions are loaded and validated during specification creation.
         """
         tool_id = config.get("id")
         module_path = config.get("module_path")
@@ -264,15 +262,13 @@ class PythonToolAdapter(ToolAdapter):
         # Validate required configuration fields
         if not all([tool_id, module_path, func_names, src_file]):
             logger.warning(f"Python tool config '{tool_id}' is missing required fields. Skipping.")
-            return ToolCreationResult(
-                tools=[],
+            return ToolSpecCreationResult(
+                tool_spec=None,
                 requested_functions=func_names or [],
-                found_functions=[],
-                missing_functions=func_names or [],
                 error="Missing required configuration fields"
             )
             
-        logger.debug(f"Creating Python tools for tool_id '{tool_id}' from module '{module_path}' with functions {func_names} (package_path='{package_path}', source_file='{src_file}')")
+        logger.debug(f"Creating Python tool spec for tool_id '{tool_id}' from module '{module_path}' with functions {func_names} (package_path='{package_path}', source_file='{src_file}')")
 
         # Resolve source directory for path-based imports
         source_dir = os.path.dirname(os.path.abspath(src_file))
@@ -304,21 +300,33 @@ class PythonToolAdapter(ToolAdapter):
                 found_functions.append(clean_function_name)
                 logger.debug(f"Successfully loaded callable '{func_spec}' as '{clean_function_name}' from module '{module_path}'")
 
-            logger.info(f"Successfully loaded {len(loaded_tools)} tools from Python module: {tool_id}")
-            return ToolCreationResult(
-                tools=loaded_tools,
+            # Handle partial success or total failure
+            if not loaded_tools:
+                logger.error(f"No tools could be loaded from Python module '{tool_id}'")
+                return ToolSpecCreationResult(
+                    tool_spec=None,
+                    requested_functions=func_names,
+                    error=f"No functions could be loaded from module '{module_path}'"
+                )
+
+            # Create StandardToolSpec with loaded tools
+            # For Python tools, we load them immediately since they're lightweight
+            tool_spec: StandardToolSpec = {
+                "type": "standard",
+                "tool": loaded_tools[0] if len(loaded_tools) == 1 else loaded_tools
+            }
+
+            logger.info(f"Successfully created tool spec for {len(loaded_tools)} tools from Python module: {tool_id}")
+            return ToolSpecCreationResult(
+                tool_spec=tool_spec,
                 requested_functions=func_names,
-                found_functions=found_functions,
-                missing_functions=missing_functions,
                 error=None
             )
             
         except Exception as e:
-            logger.error(f"Failed to extract tools from Python module '{tool_id}': {e}")
-            return ToolCreationResult(
-                tools=[],
+            logger.error(f"Failed to create tool spec for Python module '{tool_id}': {e}")
+            return ToolSpecCreationResult(
+                tool_spec=None,
                 requested_functions=func_names,
-                found_functions=[],
-                missing_functions=func_names,
                 error=str(e)
             )

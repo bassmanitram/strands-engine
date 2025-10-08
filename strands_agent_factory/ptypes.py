@@ -11,6 +11,7 @@ The types are organized into several categories:
 - Tool configuration and discovery types  
 - Framework adapter protocols
 - File content handling types
+- Tool specification types for runtime handling
 
 These types provide strong typing support and clear contracts between components
 while allowing flexibility in implementation details.
@@ -56,7 +57,7 @@ class Message(TypedDict):
 
 class BaseToolConfig(TypedDict):
     """
-    Base configuration for all tool types.
+    Base configuration for all tool configurations.
     
     Provides the common fields that all tool configurations must include,
     regardless of their specific implementation type.
@@ -121,6 +122,45 @@ ToolConfig = Union[MCPToolConfig, PythonToolConfig]
 
 
 # ============================================================================
+# Tool Specification Types
+# ============================================================================
+
+class StandardToolSpec(TypedDict):
+    """
+    Tool specification for standard (Python-based) tools.
+    
+    Standard tools are loaded directly as tool instances and are ready
+    for immediate use by strands-agents.
+    
+    Attributes:
+        type: Always "standard" for standard tools
+        tool: The loaded tool instance ready for execution
+    """
+    type: str  # Always "standard"
+    tool: Any
+
+
+class MCPToolSpec(TypedDict):
+    """
+    Tool specification for MCP (Model Context Protocol) tools.
+    
+    MCP tools require a client connection to access their functionality.
+    The client encapsulates all connection details, filtering, and server
+    identification.
+    
+    Attributes:
+        type: Always "mcp" for MCP tools
+        client: MCPClient instance with connection and filtering capabilities
+    """
+    type: str  # Always "mcp"
+    client: Any  # MCPClient instance
+
+
+ToolSpec = Union[StandardToolSpec, MCPToolSpec]
+"""Union type representing all possible tool specifications."""
+
+
+# ============================================================================
 # Tool Runtime Protocols
 # ============================================================================
 
@@ -153,12 +193,14 @@ class ToolCreationResult(NamedTuple):
         found_functions: Function names that were successfully found (default: empty list)
         missing_functions: Function names that were requested but not found (default: empty list)
         error: Error message if creation failed (default: None)
+        mcp_client: MCP client instance for MCP-based tools (default: None)
     """
     tools: List[Any] = []
     requested_functions: List[str] = []
     found_functions: List[str] = []
     missing_functions: List[str] = []
     error: Optional[str] = None
+    mcp_client: Optional[Any] = None
 
 
 class ToolDiscoveryResult(NamedTuple):

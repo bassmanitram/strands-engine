@@ -1,30 +1,49 @@
 """
-Base adapter interface for tool creation in strands_agent_factory.
+Base adapter interface for tool specification creation in strands_agent_factory.
 
 This module provides the abstract ToolAdapter base class that defines the
 interface for all tool adapters in strands_agent_factory. Tool adapters are responsible
 for loading and configuring tools from different sources (MCP servers, Python
-modules, etc.) while maintaining consistent behavior and error handling.
+modules, etc.) and creating tool specifications that can be processed later.
 
 The tool adapter system enables:
 - Pluggable tool source support (MCP, Python, custom types)
 - Consistent configuration and error handling across tool types
 - Resource lifecycle management via ExitStack integration
+- Tool specification creation for deferred tool loading
 - Detailed result reporting with success/failure tracking
 
 Tool adapters follow a common pattern:
 1. Accept configuration dictionaries specific to their tool type
-2. Load/connect to tool sources using the configuration
-3. Create tool objects compatible with strands-agents
-4. Return detailed results including success/failure information
-5. Register cleanup handlers with the provided ExitStack
+2. Create tool specifications (not actual tool instances)
+3. Return detailed results including success/failure information
+4. Register cleanup handlers with the provided ExitStack
 """
 
 from abc import ABC, abstractmethod
 from contextlib import ExitStack
 from typing import Any, Dict
 
-from ..ptypes import ToolCreationResult
+from ..ptypes import ToolSpec
+
+
+class ToolSpecCreationResult:
+    """
+    Result of tool specification creation operations.
+    
+    Provides comprehensive information about tool spec creation success/failure
+    including metadata for debugging and tracking.
+    
+    Attributes:
+        tool_spec: Successfully created tool specification (None if failed)
+        requested_functions: Function names that were requested (default: empty list)
+        error: Error message if creation failed (default: None)
+    """
+    
+    def __init__(self, tool_spec: ToolSpec = None, requested_functions: list = None, error: str = None):
+        self.tool_spec = tool_spec
+        self.requested_functions = requested_functions or []
+        self.error = error
 
 
 class ToolAdapter(ABC):
@@ -33,13 +52,12 @@ class ToolAdapter(ABC):
     
     ToolAdapter defines the interface that all tool adapters must implement
     to participate in the strands_agent_factory tool loading system. Adapters are
-    responsible for converting tool configurations into tool objects that
-    can be used by strands-agents.
+    responsible for converting tool configurations into tool specifications that
+    can be processed later to create actual tool instances.
     
     Key responsibilities:
     - Parse and validate tool-specific configuration
-    - Establish connections to tool sources (if applicable)
-    - Create tool objects compatible with strands-agents
+    - Create tool specifications (not actual tool instances)
     - Register cleanup handlers for resource management  
     - Provide detailed success/failure reporting
     
@@ -54,21 +72,23 @@ class ToolAdapter(ABC):
         Implementing a custom tool adapter::
         
             class MyToolAdapter(ToolAdapter):
-                def create(self, config: Dict[str, Any]) -> ToolCreationResult:
+                def create(self, config: Dict[str, Any]) -> ToolSpecCreationResult:
                     # Parse configuration
                     tool_id = config["id"]
                     
-                    # Create tool objects
-                    tools = self._load_my_tools(config)
+                    # Create tool specification
+                    tool_spec = {
+                        "type": "custom",
+                        "config": config,
+                        "metadata": {"id": tool_id}
+                    }
                     
                     # Register cleanup if needed
                     self.exit_stack.callback(self._cleanup_resources)
                     
-                    return ToolCreationResult(
-                        tools=tools,
+                    return ToolSpecCreationResult(
+                        tool_spec=tool_spec,
                         requested_functions=config.get("functions", []),
-                        found_functions=[t.name for t in tools],
-                        missing_functions=[],
                         error=None
                     )
     """
@@ -95,21 +115,19 @@ class ToolAdapter(ABC):
         self.exit_stack = exit_stack
 
     @abstractmethod
-    def create(self, config: Dict[str, Any]) -> ToolCreationResult:
+    def create(self, config: Dict[str, Any]) -> ToolSpecCreationResult:
         """
-        Create tools based on the provided configuration.
+        Create tool specification based on the provided configuration.
         
         This is the main method that tool adapters must implement. It takes
         a configuration dictionary specific to the tool type and returns
-        a ToolCreationResult with detailed information about the creation
-        process.
+        a ToolSpecCreationResult with the created tool specification.
         
         The method should:
         1. Validate the configuration for required fields
-        2. Establish connections/load modules as needed
-        3. Create tool objects compatible with strands-agents
-        4. Register cleanup handlers with self.exit_stack if needed
-        5. Return comprehensive result information
+        2. Create appropriate tool specification
+        3. Register cleanup handlers with self.exit_stack if needed
+        4. Return comprehensive result information
         
         Args:
             config: Tool configuration dictionary. The structure depends on
@@ -119,12 +137,10 @@ class ToolAdapter(ABC):
                    - Additional fields specific to the tool type
                    
         Returns:
-            ToolCreationResult: Detailed result of the tool creation process
+            ToolSpecCreationResult: Detailed result of the spec creation process
             including:
-            - tools: List of successfully created tool objects
+            - tool_spec: Successfully created tool specification
             - requested_functions: Functions that were requested
-            - found_functions: Functions that were actually found/created
-            - missing_functions: Requested functions that couldn't be found
             - error: Error message if creation failed (None on success)
             
         Raises:
@@ -133,38 +149,36 @@ class ToolAdapter(ABC):
         Example:
             Implementation pattern::
             
-                def create(self, config: Dict[str, Any]) -> ToolCreationResult:
+                def create(self, config: Dict[str, Any]) -> ToolSpecCreationResult:
                     try:
                         # Validate configuration
                         required_fields = ["id", "source"]
                         for field in required_fields:
                             if field not in config:
-                                return ToolCreationResult(
-                                    tools=[], 
+                                return ToolSpecCreationResult(
+                                    tool_spec=None,
                                     requested_functions=[],
-                                    found_functions=[],
-                                    missing_functions=[],
                                     error=f"Missing required field: {field}"
                                 )
                         
-                        # Create tools
-                        tools = self._create_tools_from_config(config)
+                        # Create tool specification
+                        tool_spec = {
+                            "type": "my_type",
+                            "config": config,
+                            "metadata": {"id": config["id"]}
+                        }
                         
                         # Return success result
-                        return ToolCreationResult(
-                            tools=tools,
+                        return ToolSpecCreationResult(
+                            tool_spec=tool_spec,
                             requested_functions=config.get("functions", []),
-                            found_functions=[t.name for t in tools],
-                            missing_functions=[],
                             error=None
                         )
                         
                     except Exception as e:
-                        return ToolCreationResult(
-                            tools=[],
+                        return ToolSpecCreationResult(
+                            tool_spec=None,
                             requested_functions=config.get("functions", []),
-                            found_functions=[],
-                            missing_functions=config.get("functions", []),
                             error=str(e)
                         )
         """
