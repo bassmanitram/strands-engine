@@ -92,7 +92,7 @@ class OllamaAdapter(FrameworkAdapter):
         Returns:
             str: Framework identifier "ollama" for logging and debugging
         """
-        logger.debug("OllamaAdapter.framework_name called")
+        logger.trace("OllamaAdapter.framework_name called")
         return "ollama"
 
     def load_model(self, model_name: Optional[str] = None, model_config: Optional[Dict[str, Any]] = None) -> OllamaModel:
@@ -146,7 +146,7 @@ class OllamaAdapter(FrameworkAdapter):
             instances. Ollama client arguments are passed directly to the
             underlying Ollama client for advanced configuration.
         """
-        logger.debug(f"OllamaAdapter.load_model called with model_name='{model_name}', model_config={model_config}")
+        logger.trace(f"OllamaAdapter.load_model called with model_name='{model_name}', model_config={model_config}")
         
         model_config = model_config or {}
         logger.debug(f"Using model_config: {model_config}")
@@ -193,7 +193,7 @@ class OllamaAdapter(FrameworkAdapter):
             may have specific requirements for tool schemas. This method
             provides an extension point for model-specific adaptations.
         """
-        logger.debug(f"OllamaAdapter.adapt_tools called with {len(tools) if tools else 0} tools, model_string='{model_string}'")
+        logger.trace(f"OllamaAdapter.adapt_tools called with {len(tools) if tools else 0} tools, model_string='{model_string}'")
         
         # Ollama tool support varies by model - for now, pass through unchanged
         if tools:
@@ -202,5 +202,5 @@ class OllamaAdapter(FrameworkAdapter):
         else:
             logger.debug("No tools to adapt")
         
-        logger.debug(f"Tool adaptation completed, returning {len(tools) if tools else 0} tools")
+        logger.trace(f"Tool adaptation completed, returning {len(tools) if tools else 0} tools")
         return tools

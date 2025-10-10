@@ -71,7 +71,7 @@ def import_python_item(
             # First, try to import the full path as a module (for cases where the item is a module)
             item = importlib.import_module(full_item_path)
         except ImportError:
-            logger.exception(f"Cannot load {full_item_path}")
+            logger.error(f"Cannot load {full_item_path}")
             # If that fails, import the base module and get the attribute from it
             module = importlib.import_module(full_module_path)
             item = getattr(module, item_name)

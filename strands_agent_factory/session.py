@@ -66,7 +66,7 @@ class DelegatingSession(SessionManager):
     """
 
     def __init__(self, session_name: Optional[str], sessions_home: Optional[str | Path] = None):
-        logger.debug(f"DelegatingSession.__init__ called with session_name={session_name}, sessions_home={sessions_home}")
+        logger.trace(f"DelegatingSession.__init__ called with session_name={session_name}, sessions_home={sessions_home}")
         """
         Initialize the session proxy.
         

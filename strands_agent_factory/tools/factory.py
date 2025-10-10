@@ -44,7 +44,7 @@ class MCPClient(StrandsMCPClient):
     """Enhanced strands MCPClient with filtering and server identification."""
     
     def __init__(self, server_id: str, transport_callable: Callable, requested_functions: Optional[List[str]] = None):
-        logger.debug(f"MCPClient.__init__ called with server_id='{server_id}', requested_functions={requested_functions}")
+        logger.trace(f"MCPClient.__init__ called with server_id='{server_id}', requested_functions={requested_functions}")
         
         if not _STRANDS_MCP_AVAILABLE:
             logger.error("MCP dependencies not installed")
@@ -54,11 +54,11 @@ class MCPClient(StrandsMCPClient):
         self.requested_functions = requested_functions or []
         super().__init__(transport_callable)
         
-        logger.debug(f"MCPClient.__init__ completed for server_id='{server_id}'")
+        logger.trace(f"MCPClient.__init__ completed for server_id='{server_id}'")
     
     def list_tools_sync(self, pagination_token: Optional[str] = None):
         """List tools with optional filtering by requested_functions."""
-        logger.debug(f"list_tools_sync called with pagination_token={pagination_token}, requested_functions={self.requested_functions}")
+        logger.trace(f"list_tools_sync called with pagination_token={pagination_token}, requested_functions={self.requested_functions}")
         
         all_tools = super().list_tools_sync(pagination_token)
         
@@ -99,12 +99,12 @@ class ToolFactory:
         Args:
             file_paths: List of paths to tool configuration files
         """
-        logger.debug(f"ToolFactory.__init__ called with {len(file_paths) if file_paths else 0} file paths")
+        logger.trace(f"ToolFactory.__init__ called with {len(file_paths) if file_paths else 0} file paths")
         
         # Load configurations at construction time
         self._tool_configs, self._tool_discovery_results = self._load_tool_configs(file_paths) if file_paths else ([], None)
         
-        logger.debug(f"ToolFactory.__init__ completed with {len(self._tool_configs)} tool configs loaded")
+        logger.trace(f"ToolFactory.__init__ completed with {len(self._tool_configs)} tool configs loaded")
 
     def create_tool_specs(self) -> Tuple[Optional[ToolDiscoveryResult], List[ToolSpecCreationResult]]:
         """
@@ -115,7 +115,7 @@ class ToolFactory:
             - ToolDiscoveryResult: Discovery statistics (None if no configs)
             - List[ToolSpecCreationResult]: Results from each tool spec creation attempt
         """
-        logger.debug(f"create_tool_specs called with {len(self._tool_configs)} tool configs")
+        logger.trace(f"create_tool_specs called with {len(self._tool_configs)} tool configs")
         
         if not self._tool_configs:
             logger.debug("create_tool_specs returning empty results (no configs)")
@@ -162,7 +162,7 @@ class ToolFactory:
         tool_type = config.get("type")
         tool_id = config.get("id", "unknown")
         
-        logger.debug(f"create_tool_spec_from_config called for type='{tool_type}', id='{tool_id}'")
+        logger.trace(f"create_tool_spec_from_config called for type='{tool_type}', id='{tool_id}'")
 
         # Direct dispatch to tool type handlers
         if tool_type == "python":
@@ -183,7 +183,7 @@ class ToolFactory:
     def _create_python_tool_spec(self, config: Dict[str, Any]) -> ToolSpecCreationResult:
         """Create Python tool specification directly."""
         tool_id = config.get("id", "unknown-python-tool")
-        logger.debug(f"_create_python_tool_spec called for tool_id='{tool_id}'")
+        logger.trace(f"_create_python_tool_spec called for tool_id='{tool_id}'")
         
         # Extract configuration
         module_path = config.get("module_path")
@@ -282,7 +282,7 @@ class ToolFactory:
         server_id = config.get("id", "unknown-mcp-server")
         functions = config.get("functions", [])
         
-        logger.debug(f"_create_mcp_tool_spec called for server_id='{server_id}', functions={functions}")
+        logger.trace(f"_create_mcp_tool_spec called for server_id='{server_id}', functions={functions}")
         
         # Check MCP dependencies
         if not _STRANDS_MCP_AVAILABLE:
@@ -338,7 +338,7 @@ class ToolFactory:
 
     def _create_stdio_transport(self, config: Dict[str, Any]) -> Callable:
         """Create stdio transport callable."""
-        logger.debug(f"_create_stdio_transport called with command='{config.get('command')}'")
+        logger.trace(f"_create_stdio_transport called with command='{config.get('command')}'")
         
         from mcp import StdioServerParameters
         from mcp.client.stdio import stdio_client
@@ -356,18 +356,18 @@ class ToolFactory:
         )
         
         transport_callable = lambda: stdio_client(params)
-        logger.debug("_create_stdio_transport completed")
+        logger.trace("_create_stdio_transport completed")
         return transport_callable
 
     def _create_http_transport(self, config: Dict[str, Any]) -> Callable:
         """Create HTTP transport callable."""
         url = config["url"]
-        logger.debug(f"_create_http_transport called with url='{url}'")
+        logger.trace(f"_create_http_transport called with url='{url}'")
         
         from mcp.client.streamable_http import streamablehttp_client
         
         transport_callable = lambda: streamablehttp_client(url)
-        logger.debug("_create_http_transport completed")
+        logger.trace("_create_http_transport completed")
         return transport_callable
 
     def _load_tool_configs(self, file_paths: List[PathLike]) -> Tuple[List[ToolConfig], ToolDiscoveryResult]:
@@ -380,7 +380,7 @@ class ToolFactory:
         Returns:
             Tuple[List[ToolConfig], ToolDiscoveryResult]: Successfully loaded configs and discovery stats
         """
-        logger.debug(f"_load_tool_configs called with {len(file_paths)} file paths")
+        logger.trace(f"_load_tool_configs called with {len(file_paths)} file paths")
         
         path_list = file_paths or []
         successful_configs: List[ToolConfig] = []

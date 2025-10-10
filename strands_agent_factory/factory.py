@@ -64,7 +64,7 @@ class AgentFactory:
         Args:
             config: AgentFactoryConfig instance with agent parameters
         """
-        logger.debug(f"AgentFactory.__init__ called with config: {config}")
+        logger.trace(f"AgentFactory.__init__ called with config: {config}")
         
         self.config = config
         self._initialized = False
@@ -90,7 +90,7 @@ class AgentFactory:
 
         logger.debug(f"Factory created with config: {config}")
         logger.debug(f"Parsed model string '{config.model}' -> framework='{self._framework_name}', model_id='{self._model_id}'")
-        logger.debug("AgentFactory.__init__ completed")
+        logger.trace("AgentFactory.__init__ completed")
     
     def _parse_model_string(self, model_string: str) -> Tuple[str, str]:
         """
@@ -109,7 +109,7 @@ class AgentFactory:
         Returns:
             Tuple[str, str]: (framework_name, model_id) where model_id can be empty
         """
-        logger.debug(f"_parse_model_string called with model_string: '{model_string}'")
+        logger.trace(f"_parse_model_string called with model_string: '{model_string}'")
         
         if ":" in model_string:
             # Format like "framework:model_id" or "framework:" (empty model_id)
@@ -133,7 +133,7 @@ class AgentFactory:
         Returns:
             bool: True if initialization successful, False otherwise
         """
-        logger.debug(f"initialize called, _initialized={self._initialized}")
+        logger.trace(f"initialize called, _initialized={self._initialized}")
         
         if self._initialized:
             logger.warning("Factory already initialized")
@@ -155,11 +155,11 @@ class AgentFactory:
             self._setup_conversation_manager()
             
             self._initialized = True
-            logger.debug("initialize completed successfully")
+            logger.trace("initialize completed successfully")
             return True
             
         except Exception as e:
-            logger.exception("Factory initialization failed")
+            logger.error(f"Factory initialization failed: {e}")
             return False
 
     async def _load_tools_specs(self) -> None:
@@ -169,7 +169,7 @@ class AgentFactory:
         Python tools will be fully created and MCP tools will be ready for
         activation upon Agent startup.
         """
-        logger.debug(f"_load_tools_specs called with tool_config_paths: {self.config.tool_config_paths}")
+        logger.trace(f"_load_tools_specs called with tool_config_paths: {self.config.tool_config_paths}")
         
         if not self.config.tool_config_paths:
             logger.debug("No tool config paths provided, skipping tool loading")
@@ -198,11 +198,11 @@ class AgentFactory:
             for failed_spec in failed_specs:
                 logger.warning(f"  - {failed_spec.error}")
         
-        logger.debug(f"_load_tools_specs completed with {len(self._loaded_tool_specs)} tool specs loaded")
+        logger.trace(f"_load_tools_specs completed with {len(self._loaded_tool_specs)} tool specs loaded")
         
     async def _build_initial_messages(self) -> None:
         """Build initial messages from file paths and initial message."""
-        logger.debug(f"_build_initial_messages called with file_paths: {self.config.file_paths}; initial_message: {self.config.initial_message}")
+        logger.trace(f"_build_initial_messages called with file_paths: {self.config.file_paths}; initial_message: {self.config.initial_message}")
 
         if not (self.config.file_paths or self.config.initial_message):
             logger.debug("No file paths or initial message provided, skipping initial message creation")
@@ -213,7 +213,7 @@ class AgentFactory:
 
         self._initial_messages = generate_llm_messages("\n".join([initial_message] + startup_files_references))
 
-        logger.debug(f"_build_initial_messages completed with {len(self._initial_messages) if self._initial_messages else 0} messages created")
+        logger.trace(f"_build_initial_messages completed with {len(self._initial_messages) if self._initial_messages else 0} messages created")
     
     def _setup_framework_adapter(self) -> None:
         """
@@ -227,7 +227,7 @@ class AgentFactory:
             ValueError: If the framework is not supported
             RuntimeError: If adapter initialization fails
         """
-        logger.debug(f"_setup_framework_adapter called with framework_name: '{self._framework_name}'")
+        logger.trace(f"_setup_framework_adapter called with framework_name: '{self._framework_name}'")
         
         self._framework_adapter = load_framework_adapter(self._framework_name)
         if not self._framework_adapter:
@@ -236,7 +236,7 @@ class AgentFactory:
             raise ValueError(error_msg)
         
         logger.debug(f"Framework adapter loaded successfully: {type(self._framework_adapter).__name__}")
-        logger.debug("_setup_framework_adapter completed")
+        logger.trace("_setup_framework_adapter completed")
     
     def _setup_conversation_manager(self) -> None:
         """
@@ -246,7 +246,7 @@ class AgentFactory:
         the conversation_manager_type specified in configuration. Handles
         fallback to NullConversationManager if creation fails.
         """
-        logger.debug(f"_setup_conversation_manager called with conversation_manager_type: {self.config.conversation_manager_type}")
+        logger.trace(f"_setup_conversation_manager called with conversation_manager_type: {self.config.conversation_manager_type}")
         
         try:
             self._conversation_manager = ConversationManagerFactory.create_conversation_manager(self.config)
@@ -259,7 +259,7 @@ class AgentFactory:
             self._conversation_manager = NullConversationManager()
             logger.debug("Fallback conversation manager created: NullConversationManager")
         
-        logger.debug("_setup_conversation_manager completed")
+        logger.trace("_setup_conversation_manager completed")
 
     def create_agent(self) -> Optional[Agent]:
         """
@@ -276,7 +276,7 @@ class AgentFactory:
         Returns:
             Optional[Agent]: Created agent instance, or None if creation fails
         """
-        logger.debug(f"create_agent called, _initialized={self._initialized}, _framework_adapter={self._framework_adapter is not None}")
+        logger.trace(f"create_agent called, _initialized={self._initialized}, _framework_adapter={self._framework_adapter is not None}")
         
         if not self._initialized:
             logger.error("Cannot create agent: factory not initialized. Call initialize() first.")
@@ -318,9 +318,9 @@ class AgentFactory:
                 **agent_args
             )
             logger.debug(f"WrappedAgent created successfully: {type(proxy_agent).__name__}")
-            logger.debug("create_agent completed successfully")
+            logger.trace("create_agent completed successfully")
             return proxy_agent
             
         except Exception as e:
-            logger.exception("Error initializing the agent")
+            logger.error(f"Error initializing the agent: {e}")
             return None

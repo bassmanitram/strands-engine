@@ -87,7 +87,7 @@ class BedrockAdapter(FrameworkAdapter):
         Returns:
             str: Framework identifier "bedrock" for logging and debugging
         """
-        logger.debug("BedrockAdapter.framework_name called")
+        logger.trace("BedrockAdapter.framework_name called")
         return "bedrock"
 
     def load_model(self, model_name: Optional[str] = None, model_config: Optional[Dict[str, Any]] = None) -> BedrockModel:
@@ -135,7 +135,7 @@ class BedrockAdapter(FrameworkAdapter):
             the boto3 client constructor. This includes authentication,
             region, and other AWS SDK configuration options.
         """
-        logger.debug(f"BedrockAdapter.load_model called with model_name='{model_name}', model_config={model_config}")
+        logger.trace(f"BedrockAdapter.load_model called with model_name='{model_name}', model_config={model_config}")
         
         model_config = model_config or {}
         logger.debug(f"Using model_config: {model_config}")
@@ -204,7 +204,7 @@ class BedrockAdapter(FrameworkAdapter):
                 # Output: Bedrock-compliant format
                 adapted = adapter.adapt_content(messages)
         """
-        logger.debug(f"BedrockAdapter.adapt_content called with {len(messages)} messages")
+        logger.trace(f"BedrockAdapter.adapt_content called with {len(messages)} messages")
         
         transformed_messages = []
 
@@ -259,7 +259,7 @@ class BedrockAdapter(FrameworkAdapter):
                 transformed_messages.append(new_message)
                 logger.trace(f"Added transformed message with {len(transformed_content)} content blocks")
 
-        logger.debug(f"Content adaptation completed, returning {len(transformed_messages)} messages")
+        logger.trace(f"Content adaptation completed, returning {len(transformed_messages)} messages")
         return transformed_messages
 
     def adapt_tools(self, tools: List[Tool], model_string: str) -> List[Tool]:
@@ -284,7 +284,7 @@ class BedrockAdapter(FrameworkAdapter):
             Bedrock-specific modifications. This method provides a hook for
             future Bedrock-specific tool adaptations if they become necessary.
         """
-        logger.debug(f"BedrockAdapter.adapt_tools called with {len(tools) if tools else 0} tools, model_string='{model_string}'")
+        logger.trace(f"BedrockAdapter.adapt_tools called with {len(tools) if tools else 0} tools, model_string='{model_string}'")
         
         # Bedrock generally supports standard tool schemas via underlying providers
         if tools:
@@ -292,5 +292,5 @@ class BedrockAdapter(FrameworkAdapter):
         else:
             logger.debug("No tools to adapt")
         
-        logger.debug(f"Tool adaptation completed, returning {len(tools) if tools else 0} tools")
+        logger.trace(f"Tool adaptation completed, returning {len(tools) if tools else 0} tools")
         return tools

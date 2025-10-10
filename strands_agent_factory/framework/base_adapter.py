@@ -163,7 +163,7 @@ class FrameworkAdapter(ABC):
             System prompt emulation is used for frameworks that don't support
             system prompts natively. The prompt is prepended to the first user message.
         """
-        logger.debug(f"FrameworkAdapter.prepare_agent_args called with system_prompt={system_prompt is not None}, messages={len(messages) if messages else 0}, emulate_system_prompt={emulate_system_prompt}, kwargs={list(kwargs.keys())}")
+        logger.trace(f"FrameworkAdapter.prepare_agent_args called with system_prompt={system_prompt is not None}, messages={len(messages) if messages else 0}, emulate_system_prompt={emulate_system_prompt}, kwargs={list(kwargs.keys())}")
         
         messages = messages or []
         
@@ -205,7 +205,7 @@ class FrameworkAdapter(ABC):
             Override this method if your framework requires specific
             content transformations (e.g., format conversion, filtering).
         """
-        logger.debug(f"FrameworkAdapter.adapt_content called with content type: {type(content)}")
+        logger.trace(f"FrameworkAdapter.adapt_content called with content type: {type(content)}")
         return content
 
     # ========================================================================
@@ -231,7 +231,7 @@ class FrameworkAdapter(ABC):
             Override this method if your framework requires async setup.
             Called during factory initialization before model loading.
         """
-        logger.debug(f"FrameworkAdapter.initialize called with model='{model}', model_config={model_config}")
+        logger.trace(f"FrameworkAdapter.initialize called with model='{model}', model_config={model_config}")
         logger.debug("FrameworkAdapter.initialize: No initialization required, returning True")
         return True
 
@@ -304,7 +304,7 @@ def load_framework_adapter(adapter_name: str) -> Optional[FrameworkAdapter]:
         The function uses dynamic importing to avoid loading all framework
         dependencies unless they are actually needed.
     """
-    logger.debug(f"load_framework_adapter called with adapter_name: '{adapter_name}'")
+    logger.trace(f"load_framework_adapter called with adapter_name: '{adapter_name}'")
     
     class_path = FRAMEWORK_HANDLERS.get(adapter_name)
     if class_path:

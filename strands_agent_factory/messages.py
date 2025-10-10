@@ -37,7 +37,7 @@ def generate_llm_messages(input_string: str) -> List[Dict[str, Any]]:
     Returns:
         List containing single user message dict with content blocks
     """
-    logger.debug(f"generate_llm_messages called with input length: {len(input_string)}")
+    logger.trace(f"generate_llm_messages called with input length: {len(input_string)}")
     
     # Parse file references and text segments
     file_refs = _parse_file_references(input_string)
@@ -107,7 +107,7 @@ def _parse_file_references(text: str) -> List[Tuple[str, Optional[str], int, int
         List of tuples: (glob_pattern, mimetype, start_pos, end_pos)
         where mimetype is None if not specified
     """
-    logger.debug(f"_parse_file_references called with text length: {len(text)}")
+    logger.trace(f"_parse_file_references called with text length: {len(text)}")
     
     # Regex pattern to match file('glob'[,mimetype])
     # Supports both single and double quotes, optional mimetype
@@ -142,7 +142,7 @@ def _resolve_file_glob(glob_pattern: str, mimetype: Optional[str]) -> List[Tuple
     Returns:
         List of (filepath, mimetype) tuples for existing files
     """
-    logger.debug(f"_resolve_file_glob called with glob_pattern='{glob_pattern}', mimetype='{mimetype}'")
+    logger.trace(f"_resolve_file_glob called with glob_pattern='{glob_pattern}', mimetype='{mimetype}'")
     
     try:
         # Resolve glob pattern
@@ -163,7 +163,7 @@ def _resolve_file_glob(glob_pattern: str, mimetype: Optional[str]) -> List[Tuple
         return existing_files
         
     except Exception as e:
-        logger.exception(f"Error resolving glob pattern '{glob_pattern}': {e}")
+        logger.error(f"Error resolving glob pattern '{glob_pattern}': {e}")
         return []
 
 
@@ -177,7 +177,7 @@ def _create_text_content_block(text: str) -> Dict[str, str]:
     Returns:
         Dict with text content block format: {"text": "..."}
     """
-    logger.debug(f"_create_text_content_block called with text length: {len(text)}")
+    logger.trace(f"_create_text_content_block called with text length: {len(text)}")
     
     result = {"text": text}
     
@@ -198,7 +198,7 @@ def _create_file_content_blocks(file_paths: List[Tuple[str, Optional[str]]]) -> 
     Returns:
         List of content blocks (mix of file blocks and error text blocks)
     """
-    logger.debug(f"_create_file_content_blocks called with {len(file_paths)} file paths")
+    logger.trace(f"_create_file_content_blocks called with {len(file_paths)} file paths")
     
     content_blocks = []
     
@@ -222,7 +222,7 @@ def _create_file_content_blocks(file_paths: List[Tuple[str, Optional[str]]]) -> 
         except Exception as e:
             # Create explanatory text block for failed file
             error_text = f"Failed to read file '{file_path}': {str(e)}"
-            logger.exception(error_text)
+            logger.error(error_text)
             content_blocks.append(_create_text_content_block(f"[{error_text}]"))
     
     logger.debug(f"_create_file_content_blocks returning {len(content_blocks)} content blocks") 

@@ -53,7 +53,7 @@ def guess_mimetype(file_path: PathLike) -> str:
     Returns:
         str: MIME type string, defaults to 'application/octet-stream'
     """
-    logger.debug(f"guess_mimetype called with file_path='{file_path}'")
+    logger.trace(f"guess_mimetype called with file_path='{file_path}'")
     
     mimetype, _ = mimetypes.guess_type(str(file_path))
     result = mimetype or 'application/octet-stream'
@@ -75,7 +75,7 @@ def is_likely_text_file(file_path: PathLike) -> bool:
     Returns:
         bool: True if the file is likely text, False otherwise
     """
-    logger.debug(f"is_likely_text_file called with file_path='{file_path}'")
+    logger.trace(f"is_likely_text_file called with file_path='{file_path}'")
     
     path = Path(file_path)
 
@@ -161,7 +161,7 @@ def paths_to_file_references(file_paths: List[Tuple[PathLike, Optional[str]]]) -
     Returns:
         List[str]: List of file() reference strings
     """
-    logger.debug(f"paths_to_file_references called with {len(file_paths)} file paths")
+    logger.trace(f"paths_to_file_references called with {len(file_paths)} file paths")
     
     if not file_paths:
         logger.debug("paths_to_file_references returning empty list (no file paths)")
@@ -199,7 +199,7 @@ def recursively_remove(obj: Union[Dict[str, Any], List[Any]], key_to_remove: str
         obj: Dictionary or list to process (modified in-place)
         key_to_remove: Key to remove from all nested dictionaries
     """
-    logger.debug(f"recursively_remove called with obj type={type(obj).__name__}, key_to_remove='{key_to_remove}'")
+    logger.trace(f"recursively_remove called with obj type={type(obj).__name__}, key_to_remove='{key_to_remove}'")
     
     if isinstance(obj, dict):
         # Remove the key if it exists
@@ -216,7 +216,7 @@ def recursively_remove(obj: Union[Dict[str, Any], List[Any]], key_to_remove: str
         for item in obj:
             recursively_remove(item, key_to_remove)
     
-    logger.debug(f"recursively_remove completed for key '{key_to_remove}'")
+    logger.trace(f"recursively_remove completed for key '{key_to_remove}'")
 
 
 # ============================================================================
@@ -251,7 +251,7 @@ def load_structured_file(file_path: PathLike, file_format: str = 'auto') -> Dict
         json.JSONDecodeError: If JSON parsing fails
         ValueError: If unsupported file format
     """
-    logger.debug(f"load_structured_file called with file_path='{file_path}', file_format='{file_format}'")
+    logger.trace(f"load_structured_file called with file_path='{file_path}', file_format='{file_format}'")
     
     path = Path(file_path)
     if not path.exists():
@@ -270,15 +270,15 @@ def load_structured_file(file_path: PathLike, file_format: str = 'auto') -> Dict
             return result
     except yaml.YAMLError as e:
         error_msg = f"Invalid YAML in {file_path}: {e}"
-        logger.exception(error_msg)
+        logger.error(error_msg)
         raise yaml.YAMLError(error_msg)
     except json.JSONDecodeError as e:
         error_msg = f"Invalid JSON in {file_path}: {e}"
-        logger.exception(error_msg)
+        logger.error(error_msg)
         raise json.JSONDecodeError(error_msg, doc="", pos=0)
     except Exception as e:
         error_msg = f"Problem loading file {file_path}: {e}"
-        logger.exception(error_msg)
+        logger.error(error_msg)
         raise ValueError(error_msg)
 
 
@@ -301,7 +301,7 @@ def load_file_content(file_path: PathLike, content_type: str = 'auto') -> Union[
         FileNotFoundError: If file doesn't exist
         OSError: If file cannot be read
     """
-    logger.debug(f"load_file_content called with file_path='{file_path}', content_type='{content_type}'")
+    logger.trace(f"load_file_content called with file_path='{file_path}', content_type='{content_type}'")
     
     path = Path(file_path)
     if not path.exists():
@@ -325,7 +325,7 @@ def load_file_content(file_path: PathLike, content_type: str = 'auto') -> Union[
                 return content
     except OSError as e:
         error_msg = f"Error reading file {file_path}: {e}"
-        logger.exception(error_msg)
+        logger.error(error_msg)
         raise OSError(error_msg)
 
 
@@ -343,7 +343,7 @@ def generate_file_content_block(file_path: Path, mimetype: str) -> Optional[Dict
     Returns:
         Optional[Dict[str, Any]]: Content block or None if processing failed
     """
-    logger.debug(f"generate_file_content_block called with file_path='{file_path}', mimetype='{mimetype}'")
+    logger.trace(f"generate_file_content_block called with file_path='{file_path}', mimetype='{mimetype}'")
     
     # Skip files that exceed the size limit
     if file_path.stat().st_size > MAX_FILE_SIZE_BYTES:
@@ -436,7 +436,7 @@ def files_to_content_blocks(
     Returns:
         List[Dict[str, Any]]: List of content blocks ready for agent consumption
     """
-    logger.debug(f"files_to_content_blocks called with {len(files)} files, max_files={max_files}")
+    logger.trace(f"files_to_content_blocks called with {len(files)} files, max_files={max_files}")
     
     if not files:
         logger.debug("files_to_content_blocks returning empty list (no files)")

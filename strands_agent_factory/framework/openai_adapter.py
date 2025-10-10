@@ -74,7 +74,7 @@ class OpenAIAdapter(FrameworkAdapter):
             Returns "openai" to identify this as the OpenAI adapter,
             distinguishing it from other framework adapters.
         """
-        logger.debug("OpenAIAdapter.framework_name called")
+        logger.trace("OpenAIAdapter.framework_name called")
         return "openai"
 
     def load_model(self, model_name: Optional[str] = None, model_config: Optional[Dict[str, Any]] = None) -> OpenAIModel:
@@ -124,7 +124,7 @@ class OpenAIAdapter(FrameworkAdapter):
             OpenAI client constructor, while other parameters configure
             the model behavior.
         """
-        logger.debug(f"OpenAIAdapter.load_model called with model_name='{model_name}', model_config={model_config}")
+        logger.trace(f"OpenAIAdapter.load_model called with model_name='{model_name}', model_config={model_config}")
         
         model_config = model_config or {}
         logger.debug(f"Using model_config: {model_config}")
@@ -168,7 +168,7 @@ class OpenAIAdapter(FrameworkAdapter):
             not required. This method provides an extension point for
             future OpenAI-specific tool optimizations.
         """
-        logger.debug(f"OpenAIAdapter.adapt_tools called with {len(tools) if tools else 0} tools, model_string='{model_string}'")
+        logger.trace(f"OpenAIAdapter.adapt_tools called with {len(tools) if tools else 0} tools, model_string='{model_string}'")
         
         # OpenAI generally supports standard tool schemas without modification
         if tools:
@@ -176,5 +176,5 @@ class OpenAIAdapter(FrameworkAdapter):
         else:
             logger.debug("No tools to adapt")
         
-        logger.debug(f"Tool adaptation completed, returning {len(tools) if tools else 0} tools")
+        logger.trace(f"Tool adaptation completed, returning {len(tools) if tools else 0} tools")
         return tools

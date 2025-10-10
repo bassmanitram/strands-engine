@@ -66,7 +66,7 @@ class ConversationManagerFactory:
         Returns:
             ConversationManager: Configured conversation manager instance
         """
-        logger.debug(f"create_conversation_manager called with type: {config.conversation_manager_type}")
+        logger.trace(f"create_conversation_manager called with type: {config.conversation_manager_type}")
         
         try:
             if config.conversation_manager_type == "null":
@@ -102,7 +102,7 @@ class ConversationManagerFactory:
                             logger.warning("Failed to create summarization agent, "
                                            "proceeding without one")
                     except Exception as e:
-                        logger.exception(f"Error creating summarization agent: {e}")
+                        logger.error(f"Error creating summarization agent: {e}")
                         logger.info("Proceeding without summarization agent")
                         summarization_agent = None
 
@@ -123,7 +123,7 @@ class ConversationManagerFactory:
             return result
 
         except Exception as e:
-            logger.exception(f"Failed to create conversation manager: {e}")
+            logger.error(f"Failed to create conversation manager: {e}")
             logger.info("Falling back to NullConversationManager")
             result = NullConversationManager()
             logger.debug(f"create_conversation_manager returning fallback: {type(result).__name__}")
@@ -145,7 +145,7 @@ class ConversationManagerFactory:
         Returns:
             Optional[Agent]: Configured summarization agent, or None if creation fails
         """
-        logger.debug(f"_create_summarization_agent called with model_string: {model_string}")
+        logger.trace(f"_create_summarization_agent called with model_string: {model_string}")
         
         try:
             logger.debug(f"Loading summarization model: {model_string}")
@@ -194,5 +194,5 @@ class ConversationManagerFactory:
             return summarization_agent
 
         except Exception as e:
-            logger.exception(f"Failed to create summarization agent: {e}")
+            logger.error(f"Failed to create summarization agent: {e}")
             return None

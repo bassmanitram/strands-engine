@@ -26,7 +26,7 @@ class AgentProxy:
             tool_specs: List of tool specifications including MCP server clients
             **kwargs: Arguments to pass to Agent constructor during __enter__
         """
-        logger.debug(f"AgentProxy.__init__ called with {len(tool_specs)} tool specs")
+        logger.trace(f"AgentProxy.__init__ called with {len(tool_specs)} tool specs")
         
         self._adapter = adapter
         self._tool_specs = tool_specs or []
@@ -46,7 +46,7 @@ class AgentProxy:
         self._exit_stack = None
         self._active_mcp_servers = []
         
-        logger.debug(f"AgentProxy.__init__ completed - {len(self._mcp_server_specs)} MCP servers, {len(self._tools)} regular tools")
+        logger.trace(f"AgentProxy.__init__ completed - {len(self._mcp_server_specs)} MCP servers, {len(self._tools)} regular tools")
 
     def __enter__(self):
         """Initialize MCP servers and create the underlying Agent.
@@ -54,7 +54,7 @@ class AgentProxy:
         Returns:
             self: The proxy instance for use in the context manager
         """
-        logger.debug(f"AgentProxy.__enter__ called with {len(self._mcp_server_specs)} MCP server specs")
+        logger.trace(f"AgentProxy.__enter__ called with {len(self._mcp_server_specs)} MCP server specs")
         
         # Extract MCP clients from tool specs
         mcp_clients = [spec["client"] for spec in self._mcp_server_specs]
@@ -90,13 +90,13 @@ class AgentProxy:
                 try:
                     self._mcp_tools.extend(client.list_tools_sync());
                 except Exception as e:
-                    logger.exception(f"MCP client tools listing failed for {getattr(client, 'server_id', 'unknown')}: {e}")
+                    logger.error(f"MCP client tools listing failed for {getattr(client, 'server_id', 'unknown')}: {e}")
 
         # Create the actual Agent with all tools available
         self._context_entered = True
         self._agent = Agent(tools=(self._tools + self._mcp_tools), **self._agent_kwargs)
 
-        logger.debug(f"AgentProxy.__enter__ completed with {len(self._active_mcp_servers)} active MCP servers")
+        logger.trace(f"AgentProxy.__enter__ completed with {len(self._active_mcp_servers)} active MCP servers")
         return self
     
     def _call_single_enter_safely(self, manager):
@@ -108,11 +108,11 @@ class AgentProxy:
         Returns:
             Result from the manager's __enter__ method
         """
-        logger.debug(f"_call_single_enter_safely called for manager type: {type(manager).__name__}")
+        logger.trace(f"_call_single_enter_safely called for manager type: {type(manager).__name__}")
         
         result = manager.__enter__()
         
-        logger.debug("_call_single_enter_safely completed")
+        logger.trace("_call_single_enter_safely completed")
         return result
 
     def __exit__(self, exc_type, exc_val, exc_tb):
@@ -126,7 +126,7 @@ class AgentProxy:
         Returns:
             bool: False to propagate any exceptions
         """
-        logger.debug(f"AgentProxy.__exit__ called with exc_type={exc_type}")
+        logger.trace(f"AgentProxy.__exit__ called with exc_type={exc_type}")
         
         # Clean up agent first to prevent access during MCP cleanup
         self._context_entered = False
@@ -136,12 +136,12 @@ class AgentProxy:
             result = self._exit_stack.__exit__(exc_type, exc_val, exc_tb)
             self._active_mcp_servers = []
             self._mcp_tools = []
-            logger.debug("AgentProxy.__exit__ completed with exit stack cleanup")
+            logger.trace("AgentProxy.__exit__ completed with exit stack cleanup")
             return result
         
         self._active_mcp_servers = []
         self._mcp_tools = []
-        logger.debug("AgentProxy.__exit__ completed (no exit stack)")
+        logger.trace("AgentProxy.__exit__ completed (no exit stack)")
         return False
     
     async def _handle_agent_stream(self, message: str) -> bool:
@@ -153,7 +153,7 @@ class AgentProxy:
         Returns:
             bool: True if message was processed successfully, False on error
         """
-        logger.debug(f"_handle_agent_stream called with message type: {type(message)}")
+        logger.trace(f"_handle_agent_stream called with message type: {type(message)}")
         self._ensure_agent_available()
         
         if not message:
@@ -169,15 +169,15 @@ class AgentProxy:
             async for chunk in self.stream_async(transformed_messages):
                 pass  # CallbackHandler processes all output
 
-            logger.debug("_handle_agent_stream completed successfully")
+            logger.trace("_handle_agent_stream completed successfully")
             return True
         except Exception as e:
-            logger.exception(f"Unexpected error in agent stream")
+            logger.error(f"Unexpected error in agent stream: {e}")
             print(
                 f"\nAn unexpected error occurred while generating the response: {e}",
                 file=sys.stderr,
             )
-            logger.debug("_handle_agent_stream completed with error")
+            logger.trace("_handle_agent_stream completed with error")
             return False
 
     async def send_message_to_agent(self, message: str, show_user_input: bool = True) -> bool:
@@ -190,7 +190,7 @@ class AgentProxy:
         Returns:
             bool: True if message was processed successfully, False on error
         """
-        logger.debug(f"send_message_to_agent called with message type: {type(message)}, show_user_input: {show_user_input}")
+        logger.trace(f"send_message_to_agent called with message type: {type(message)}, show_user_input: {show_user_input}")
         self._ensure_agent_available()
         
         if show_user_input:
@@ -207,7 +207,7 @@ class AgentProxy:
         Raises:
             RuntimeError: If agent is accessed outside of context manager
         """
-        logger.debug("_ensure_agent_available called")
+        logger.trace("_ensure_agent_available called")
         
         if not self._context_entered or self._agent is None:
             logger.debug("_ensure_agent_available failed - agent not available")
@@ -217,7 +217,7 @@ class AgentProxy:
                 "    agent.do_something()"
             )
         
-        logger.debug("_ensure_agent_available completed - agent available")
+        logger.trace("_ensure_agent_available completed - agent available")
     
     def __getattr__(self, name: str) -> Any:
         """Delegate attribute access to the underlying agent.
@@ -228,10 +228,10 @@ class AgentProxy:
         Returns:
             Any: The attribute value from the underlying agent
         """
-        logger.debug(f"__getattr__ called for attribute: {name}")
+        logger.trace(f"__getattr__ called for attribute: {name}")
         self._ensure_agent_available()
         result = getattr(self._agent, name)
-        logger.debug(f"__getattr__ completed for attribute: {name}")
+        logger.trace(f"__getattr__ completed for attribute: {name}")
         return result
     
     def __setattr__(self, name: str, value: Any) -> None:
@@ -241,15 +241,15 @@ class AgentProxy:
             name: Name of the attribute to set
             value: Value to set the attribute to
         """
-        logger.debug(f"__setattr__ called for attribute: {name}")
+        logger.trace(f"__setattr__ called for attribute: {name}")
         
         if name.startswith('_'):  # Internal attributes
             object.__setattr__(self, name, value)
-            logger.debug(f"__setattr__ completed for internal attribute: {name}")
+            logger.trace(f"__setattr__ completed for internal attribute: {name}")
         else:
             self._ensure_agent_available()
             setattr(self._agent, name, value)
-            logger.debug(f"__setattr__ completed for agent attribute: {name}")
+            logger.trace(f"__setattr__ completed for agent attribute: {name}")
     
     def __call__(self, *args, **kwargs):
         """Make the proxy callable like the underlying agent.
@@ -261,10 +261,10 @@ class AgentProxy:
         Returns:
             Any: Result from calling the underlying agent
         """
-        logger.debug(f"__call__ called with {len(args)} args, {len(kwargs)} kwargs")
+        logger.trace(f"__call__ called with {len(args)} args, {len(kwargs)} kwargs")
         self._ensure_agent_available()
         result = self._agent(*args, **kwargs)
-        logger.debug("__call__ completed")
+        logger.trace("__call__ completed")
         return result
     
     # Other convenient things to do

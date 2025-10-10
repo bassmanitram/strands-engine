@@ -87,7 +87,7 @@ class LiteLLMAdapter(FrameworkAdapter):
         Returns:
             str: Framework identifier "litellm" for logging and debugging
         """
-        logger.debug("LiteLLMAdapter.framework_name called")
+        logger.trace("LiteLLMAdapter.framework_name called")
         return "litellm"
 
     def load_model(self, model_name: Optional[str] = None, model_config: Optional[Dict[str, Any]] = None) -> LiteLLMModel:
@@ -137,7 +137,7 @@ class LiteLLMAdapter(FrameworkAdapter):
             client arguments. Client arguments are provider-specific and
             passed to the underlying provider's client constructor.
         """
-        logger.debug(f"LiteLLMAdapter.load_model called with model_name='{model_name}', model_config={model_config}")
+        logger.trace(f"LiteLLMAdapter.load_model called with model_name='{model_name}', model_config={model_config}")
         
         model_config = model_config or {}
         logger.debug(f"Using model_config: {model_config}")
@@ -208,7 +208,7 @@ class LiteLLMAdapter(FrameworkAdapter):
                     }
                 }
         """
-        logger.debug(f"LiteLLMAdapter.adapt_tools called with {len(tools) if tools else 0} tools, model_string='{model_string}'")
+        logger.trace(f"LiteLLMAdapter.adapt_tools called with {len(tools) if tools else 0} tools, model_string='{model_string}'")
         
         # For LiteLLM, always clean additionalProperties regardless of underlying provider
         if tools:
@@ -235,5 +235,5 @@ class LiteLLMAdapter(FrameworkAdapter):
         else:
             logger.debug("No tools to adapt")
 
-        logger.debug(f"Tool adaptation completed, returning {len(tools) if tools else 0} tools")
+        logger.trace(f"Tool adaptation completed, returning {len(tools) if tools else 0} tools")
         return tools

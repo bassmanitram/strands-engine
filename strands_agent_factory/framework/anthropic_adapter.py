@@ -71,7 +71,7 @@ class AnthropicAdapter(FrameworkAdapter):
         Returns:
             str: Framework identifier "anthropic" for logging and debugging
         """
-        logger.debug("AnthropicAdapter.framework_name called")
+        logger.trace("AnthropicAdapter.framework_name called")
         return "anthropic"
     
     def load_model(self, model_name: Optional[str] = None, model_config: Optional[Dict[str, Any]] = None) -> AnthropicModel:
@@ -120,7 +120,7 @@ class AnthropicAdapter(FrameworkAdapter):
             Anthropic client constructor, while other parameters configure
             the model behavior.
         """
-        logger.debug(f"AnthropicAdapter.load_model called with model_name='{model_name}', model_config={model_config}")
+        logger.trace(f"AnthropicAdapter.load_model called with model_name='{model_name}', model_config={model_config}")
         
         model_config = model_config or {}
         logger.debug(f"Using model_config: {model_config}")
@@ -163,7 +163,7 @@ class AnthropicAdapter(FrameworkAdapter):
             for future Anthropic-specific tool optimizations or schema
             adjustments if they become necessary.
         """
-        logger.debug(f"AnthropicAdapter.adapt_tools called with {len(tools) if tools else 0} tools, model_string='{model_string}'")
+        logger.trace(f"AnthropicAdapter.adapt_tools called with {len(tools) if tools else 0} tools, model_string='{model_string}'")
         
         # Anthropic generally supports standard tool schemas without modification
         if tools:
@@ -171,5 +171,5 @@ class AnthropicAdapter(FrameworkAdapter):
         else:
             logger.debug("No tools to adapt")
         
-        logger.debug(f"Tool adaptation completed, returning {len(tools) if tools else 0} tools")
+        logger.trace(f"Tool adaptation completed, returning {len(tools) if tools else 0} tools")
         return tools
