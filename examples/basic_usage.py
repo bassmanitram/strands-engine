@@ -7,7 +7,7 @@ for basic conversational AI interactions.
 """
 
 import asyncio
-from strands_agent_factory import EngineConfig, AgentFactory
+from strands_agent_factory import AgentFactoryConfig, AgentFactory
 
 
 async def basic_example():
@@ -16,7 +16,7 @@ async def basic_example():
     print("=" * 50)
     
     # Create configuration
-    config = EngineConfig(
+    config = AgentFactoryConfig(
         model="gpt-4o",  # Use OpenAI GPT-4
         system_prompt="You are a helpful assistant that provides clear, concise answers."
     )
@@ -71,7 +71,7 @@ async def advanced_example():
     print("=" * 50)
     
     # Create advanced configuration
-    config = EngineConfig(
+    config = AgentFactoryConfig(
         model="anthropic:claude-3-5-sonnet-20241022",  # Use Anthropic Claude
         system_prompt="You are an advanced assistant with access to tools and uploaded files.",
         conversation_manager_type="sliding_window",
@@ -144,7 +144,7 @@ async def litellm_example():
         print(f"   Model: {model_string}")
         
         try:
-            config = EngineConfig(
+            config = AgentFactoryConfig(
                 model=model_string,
                 system_prompt=f"You are testing {description}. Respond briefly to confirm you're working."
             )

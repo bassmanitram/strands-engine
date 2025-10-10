@@ -85,7 +85,7 @@ Engage naturally in conversation while leveraging your tools when appropriate.""
 
                 print("\n")
                                 
-            except KeyboardInterrupt:
+            except (KeyboardInterrupt, EOFError):
                 print("\n👋 Goodbye!")
                 break
             except Exception as e:
@@ -125,7 +125,7 @@ async def main():
 if __name__ == "__main__":
     try:
         asyncio.run(main())
-    except KeyboardInterrupt:
+    except (KeyboardInterrupt, EOFError):
         print("\n👋 Goodbye!")
     except Exception as e:
         print(f"❌ Failed to start chatbot: {e}")

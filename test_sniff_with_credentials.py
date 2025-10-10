@@ -13,7 +13,7 @@ from pathlib import Path
 
 # Test basic imports
 try:
-    from strands_agent_factory import EngineConfig, AgentFactory
+    from strands_agent_factory import AgentFactoryConfig, AgentFactory
     print("✓ Successfully imported strands_agent_factory components")
 except ImportError as e:
     print(f"✗ Import failed: {e}")
@@ -25,7 +25,7 @@ async def test_with_real_credentials():
     
     try:
         # Use the available Gemini model via LiteLLM
-        config = EngineConfig(
+        config = AgentFactoryConfig(
             model="litellm:gemini/gemini-2.5-flash",
             system_prompt="You are a helpful test assistant for verifying strands_agent_factory functionality."
         )
@@ -84,7 +84,7 @@ async def test_complex_configuration_with_gemini():
     
     try:
         # Test with various conversation management options
-        config = EngineConfig(
+        config = AgentFactoryConfig(
             model="litellm:gemini/gemini-2.5-flash",
             system_prompt="You are a test assistant with conversation management.",
             conversation_manager_type="sliding_window",
@@ -142,7 +142,7 @@ async def test_file_processing_with_gemini():
         test_file = Path("/tmp/strands_test.txt")
         test_file.write_text("This is a test document for strands_agent_factory validation.\nIt contains multiple lines of test content.")
         
-        config = EngineConfig(
+        config = AgentFactoryConfig(
             model="litellm:gemini/gemini-2.5-flash",
             system_prompt="You are a test assistant that can analyze uploaded files.",
             file_paths=[
