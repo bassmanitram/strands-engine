@@ -50,7 +50,7 @@ Engage naturally in conversation while leveraging your tools when appropriate.""
         with self.factory.create_agent() as agent:
             self.agent = agent
             print(f"   Model: {self.config.model}")
-            print(f"   Tools available: {len(self.config.tool_config_paths)} tool sets")
+            print(f"   Tools available: {len(self.agent.tool_names)} tools")
             print("   Ready! Type 'help' for commands or start chatting.\n")
             
             await self._chat_loop()
