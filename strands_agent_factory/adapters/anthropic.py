@@ -19,8 +19,8 @@ with Claude models without the overhead of proxy layers.
 from typing import Any, Dict, List, Optional
 from loguru import logger
 
-from .base_adapter import FrameworkAdapter
-from ..ptypes import Tool
+from .base import FrameworkAdapter
+from ..core.types import Tool
 
 from strands.models.anthropic import AnthropicModel
 

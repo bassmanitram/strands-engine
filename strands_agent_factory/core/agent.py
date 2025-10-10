@@ -7,9 +7,9 @@ from typing import Optional, List, Any
 from loguru import logger
 from strands import Agent
 
-from strands_agent_factory.framework.base_adapter import FrameworkAdapter
-from strands_agent_factory.messages import generate_llm_messages
-from strands_agent_factory.ptypes import ToolSpec
+from strands_agent_factory.adapters.base import FrameworkAdapter
+from strands_agent_factory.messaging.generator import generate_llm_messages
+from strands_agent_factory.core.types import ToolSpec
 
 class AgentProxy:
     """Proxy for Agent that manages MCP server lifecycle and defers agent creation until context entry.

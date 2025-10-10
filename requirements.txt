@@ -1,16 +1,45 @@
 # Core dependencies for strands-agent-factory
 # These are the minimum required packages for the library to function
 
-# Tools doesn't work with later agents versions yet
+# strands-agents pinned to exactly 1.10.0 
+# CRITICAL: Versions >1.10.0 break strands-agents-tools compatibility
+# Tools integration requires this exact version alignment
 strands-agents==1.10.0
-strands-agents-tools
 
-# Logging framework
+# Logging framework with structured logging support
 loguru>=0.6.0
 
-# YAML parsing for configuration files
+# YAML parsing for tool configuration files
 PyYAML>=6.0
 
-# We need nested async because ... well some sync things in strands seem to thing they couldn't POSSIBLY
-# be running in an async conext!
-nest_asyncio
+# Async utilities for nested event loop compatibility
+# Required because some strands components assume sync context
+nest_asyncio>=1.5.0
+
+# Optional framework dependencies:
+# Install via strands-agents extras which bring in all necessary dependencies:
+#
+# For LiteLLM support (100+ AI providers):
+# pip install "strands-agents[litellm]==1.10.0"
+#
+# For direct Anthropic API support:
+# pip install "strands-agents[anthropic]==1.10.0"
+#
+# For direct OpenAI API support:
+# pip install "strands-agents[openai]==1.10.0"
+#
+# For Ollama local model support:
+# pip install "strands-agents[ollama]==1.10.0"
+#
+# For AWS Bedrock support:
+# pip install "strands-agents[bedrock]==1.10.0"
+#
+# For strands-tools integration (optional - not needed for base functionality):
+# pip install "strands-agents-tools"
+#
+# Or install strands-agent-factory with extras:
+# pip install "strands-agent-factory[litellm]"
+# pip install "strands-agent-factory[anthropic,openai]"
+# pip install "strands-agent-factory[all-providers]"
+# pip install "strands-agent-factory[tools]"        # For strands-tools integration
+# pip install "strands-agent-factory[full]"         # Everything including dev tools

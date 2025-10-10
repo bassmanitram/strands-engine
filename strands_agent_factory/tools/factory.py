@@ -12,10 +12,10 @@ from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from loguru import logger
 
-from strands_agent_factory.utils import load_structured_file
-from strands_agent_factory.python_tools import import_python_item
+from strands_agent_factory.messaging.content import load_structured_file
+from strands_agent_factory.tools.python import import_python_item
 
-from ..ptypes import PathLike, ToolConfig, ToolDiscoveryResult, ToolSpec
+from ..core.types import PathLike, ToolConfig, ToolDiscoveryResult, ToolSpec
 
 # MCP imports with availability check
 try:

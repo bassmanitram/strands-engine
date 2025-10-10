@@ -1,0 +1,28 @@
+# Include documentation and metadata files
+include README.md
+include LICENSE
+include CHANGELOG.md
+include requirements.txt
+
+# Include configuration files
+include pyproject.toml
+
+# Include example and demo files
+include demo-*.sh
+include run_sniff_debug.sh
+include test_*.py
+include chatbot.py
+
+# Include tool configuration examples
+recursive-include tools *.json *.yaml *.yml
+
+# Exclude development and build artifacts
+exclude .gitignore
+exclude fix_*.py
+exclude fix_*.sh
+recursive-exclude * __pycache__
+recursive-exclude * *.py[co]
+recursive-exclude * .DS_Store
+recursive-exclude * *.swp
+recursive-exclude * *.swo
+recursive-exclude .git *

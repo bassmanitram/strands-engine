@@ -20,7 +20,7 @@ from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Tuple, Literal
 from pathlib import Path
 
-from .ptypes import PathLike, Message
+from .types import PathLike, Message
 
 # ============================================================================
 # Type Definitions

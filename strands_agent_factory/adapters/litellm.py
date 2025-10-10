@@ -21,9 +21,9 @@ from typing import List, Optional, Dict, Any
 from loguru import logger
 from strands.models.litellm import LiteLLMModel
 
-from .base_adapter import FrameworkAdapter
-from ..ptypes import Tool
-from ..utils import recursively_remove
+from .base import FrameworkAdapter
+from ..core.types import Tool
+from ..messaging.content import recursively_remove
 
 
 class LiteLLMAdapter(FrameworkAdapter):

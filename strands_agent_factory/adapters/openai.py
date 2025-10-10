@@ -20,8 +20,8 @@ from typing import List, Optional, Dict, Any
 from loguru import logger
 from strands.models.openai import OpenAIModel
 
-from .base_adapter import FrameworkAdapter
-from ..ptypes import Tool
+from .base import FrameworkAdapter
+from ..core.types import Tool
 
 
 class OpenAIAdapter(FrameworkAdapter):

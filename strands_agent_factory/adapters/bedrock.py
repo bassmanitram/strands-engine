@@ -23,8 +23,8 @@ from strands.models.bedrock import BedrockModel
 from strands.types.content import Messages
 from botocore.config import Config as BotocoreConfig
 
-from .base_adapter import FrameworkAdapter
-from ..ptypes import Tool
+from .base import FrameworkAdapter
+from ..core.types import Tool
 
 # Valid image formats supported by AWS Bedrock
 VALID_IMAGE_FORMATS = {'gif', 'jpeg', 'png', 'webp'}

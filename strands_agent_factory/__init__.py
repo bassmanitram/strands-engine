@@ -33,8 +33,8 @@ Example:
 import nest_asyncio; 
 nest_asyncio.apply()
 
-from .config import AgentFactoryConfig
-from .factory import AgentFactory  
+from .core.config import AgentFactoryConfig
+from .core.factory import AgentFactory  
 
 __version__ = "0.1.0"
 

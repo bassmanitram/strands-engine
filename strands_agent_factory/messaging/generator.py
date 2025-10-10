@@ -13,8 +13,8 @@ from pathlib import Path
 from typing import List, Dict, Any, Tuple, Optional
 
 from loguru import logger
-from .utils import generate_file_content_block
-from .ptypes import PathLike
+from .content import generate_file_content_block
+from ..core.types import PathLike
 
 
 def generate_llm_messages(input_string: str) -> List[Dict[str, Any]]:

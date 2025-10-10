@@ -29,7 +29,7 @@ from strands.types.content import Messages
 
 from loguru import logger
 
-from ..ptypes import Tool
+from ..core.types import Tool
 import importlib
 
 # ============================================================================
@@ -37,11 +37,11 @@ import importlib
 # ============================================================================
 
 FRAMEWORK_HANDLERS = {
-    "litellm": "strands_agent_factory.framework.litellm_adapter.LiteLLMAdapter",
-    "openai":  "strands_agent_factory.framework.openai_adapter.OpenAIAdapter",
-    "anthropic": "strands_agent_factory.framework.anthropic_adapter.AnthropicAdapter",
-    "bedrock": "strands_agent_factory.framework.bedrock_adapter.BedrockAdapter",
-    "ollama": "strands_agent_factory.framework.ollama_adapter.OllamaAdapter"
+    "litellm": "strands_agent_factory.adapters.litellm.LiteLLMAdapter",
+    "openai":  "strands_agent_factory.adapters.openai.OpenAIAdapter",
+    "anthropic": "strands_agent_factory.adapters.anthropic.AnthropicAdapter",
+    "bedrock": "strands_agent_factory.adapters.bedrock.BedrockAdapter",
+    "ollama": "strands_agent_factory.adapters.ollama.OllamaAdapter"
 }
 """
 Registry mapping framework names to their adapter class paths.

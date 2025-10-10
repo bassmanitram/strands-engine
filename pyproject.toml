@@ -5,37 +5,99 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "strands-agent-factory"
 version = "0.1.0"
-description = "A factory for strands agents based upon configuration files and string format conventions"
+description = "Factory-based agent creation framework for strands-agents with multi-framework AI provider support"
 readme = "README.md"
-requires-python = ">=3.8"
+requires-python = ">=3.10"
 license = {text = "MIT"}
 authors = [
     {name = "bassmanitram", email = "bassmanitram@users.noreply.github.com"},
 ]
+keywords = [
+    "ai",
+    "agents", 
+    "llm",
+    "chatbot",
+    "openai",
+    "anthropic",
+    "gemini",
+    "ollama",
+    "bedrock",
+    "mcp",
+    "tools"
+]
 classifiers = [
-    "Development Status :: 3 - Alpha",
-    "Intended Audience :: Developers", 
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Science/Research", 
     "License :: OSI Approved :: MIT License",
     "Operating System :: OS Independent",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.8",
-    "Programming Language :: Python :: 3.9",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
     "Topic :: Software Development :: Libraries :: Python Modules",
     "Topic :: Scientific/Engineering :: Artificial Intelligence",
     "Topic :: Communications :: Chat",
+    "Topic :: Internet :: WWW/HTTP :: Dynamic Content",
+    "Topic :: Software Development :: Libraries :: Application Frameworks",
 ]
 dependencies = [
-    "strands-agents",
+    # strands-agents pinned to exactly 1.10.0 - versions >1.10.0 break strands-agents-tools compatibility
+    "strands-agents==1.10.0",
     "loguru>=0.6.0",
+    "nest-asyncio>=1.5.0",
+    "PyYAML>=6.0",
 ]
 
 [project.optional-dependencies]
 dev = [
     "pytest>=7.0.0",
-    "pytest-asyncio>=0.21.0"
+    "pytest-asyncio>=0.21.0",
+    "black>=23.0.0",
+    "isort>=5.12.0",
+    "mypy>=1.0.0",
 ]
+# Framework support via strands-agents extras
+# Note: These depend on strands-agents==1.10.0 for tools compatibility
+litellm = [
+    "strands-agents[litellm]==1.10.0",
+]
+anthropic = [
+    "strands-agents[anthropic]==1.10.0",
+]
+openai = [
+    "strands-agents[openai]==1.10.0",
+]
+ollama = [
+    "strands-agents[ollama]==1.10.0",
+]
+bedrock = [
+    "strands-agents[bedrock]==1.10.0",
+]
+# Tools support (optional - only needed for strands-tools integration)
+tools = [
+    "strands-agents-tools",
+]
+# Convenience extras
+all-providers = [
+    "strands-agents[litellm,anthropic,openai,ollama,bedrock]==1.10.0",
+]
+full = [
+    "strands-agent-factory[all-providers,tools,dev]",
+]
+
+[project.urls]
+Homepage = "https://github.com/bassmanitram/strands-agent-factory"
+Repository = "https://github.com/bassmanitram/strands-agent-factory"
+Documentation = "https://github.com/bassmanitram/strands-agent-factory#readme"
+Issues = "https://github.com/bassmanitram/strands-agent-factory/issues"
+
+[project.scripts]
+strands-chatbot = "strands_agent_factory.scripts.chatbot:main"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["strands_agent_factory*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
@@ -43,3 +105,34 @@ python_files = ["test_*.py"]
 python_classes = ["Test*"]
 python_functions = ["test_*"]
 asyncio_mode = "strict"
+
+[tool.black]
+line-length = 88
+target-version = ['py310']
+include = '\.pyi?$'
+extend-exclude = '''
+/(
+  # directories
+  \.eggs
+  | \.git
+  | \.hg
+  | \.mypy_cache
+  | \.tox
+  | \.venv
+  | build
+  | dist
+)/
+'''
+
+[tool.isort]
+profile = "black"
+multi_line_output = 3
+line_length = 88
+known_first_party = ["strands_agent_factory"]
+
+[tool.mypy]
+python_version = "3.10"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = true
+ignore_missing_imports = true

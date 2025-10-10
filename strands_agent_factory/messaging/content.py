@@ -26,7 +26,7 @@ from typing import Any, Dict, List, Optional, Tuple, Union
 from loguru import logger
 import yaml
 
-from strands_agent_factory.ptypes import PathLike
+from strands_agent_factory.core.types import PathLike
 
 # ============================================================================
 # Constants

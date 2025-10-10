@@ -23,19 +23,19 @@ from typing import List, Optional, Tuple
 from loguru import logger
 from strands import Agent
 
-from strands_agent_factory.agent import AgentProxy
-from strands_agent_factory.conversation import ConversationManagerFactory
-from strands_agent_factory.framework.base_adapter import load_framework_adapter
+from strands_agent_factory.core.agent import AgentProxy
+from strands_agent_factory.session.conversation import ConversationManagerFactory
+from strands_agent_factory.adapters.base import load_framework_adapter
 from strands.handlers.callback_handler import PrintingCallbackHandler
 from strands.types.content import Messages
 
-from strands_agent_factory.messages import generate_llm_messages
-from strands_agent_factory.utils import paths_to_file_references
+from strands_agent_factory.messaging.generator import generate_llm_messages
+from strands_agent_factory.messaging.content import paths_to_file_references
 
 from .config import AgentFactoryConfig
-from .ptypes import FrameworkAdapter, ToolSpec
-from .session import DelegatingSession
-from .tools import ToolFactory
+from .types import FrameworkAdapter, ToolSpec
+from strands_agent_factory.session.manager import DelegatingSession
+from strands_agent_factory.tools.factory import ToolFactory
 
 
 class AgentFactory:

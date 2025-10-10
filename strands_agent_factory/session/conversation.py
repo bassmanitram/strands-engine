@@ -27,8 +27,8 @@ from strands.agent.conversation_manager import (
 )
 from strands import Agent
 
-from strands_agent_factory.config import AgentFactoryConfig
-from strands_agent_factory.framework.base_adapter import load_framework_adapter
+from strands_agent_factory.core.config import AgentFactoryConfig
+from strands_agent_factory.adapters.base import load_framework_adapter
 
 
 class ConversationManagerFactory:
