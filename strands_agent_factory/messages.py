@@ -35,24 +35,9 @@ def generate_llm_messages(input_string: str) -> List[Dict[str, Any]]:
         input_string: String containing text and file() references
         
     Returns:
-        List containing single user message dict with content blocks:
-        [{
-            "role": "user",
-            "content": [
-                {"text": "..."},
-                {"type": "file", "path": "...", "content": "..."},
-                ...
-            ]
-        }]
-        
-    Example:
-        >>> message = generate_llm_message("Analyze file('data.json') and summarize")
-        >>> len(message)
-        1
-        >>> message[0]["role"]
-        'user'
+        List containing single user message dict with content blocks
     """
-    logger.debug(f"generate_llm_message called with input length: {len(input_string)}")
+    logger.debug(f"generate_llm_messages called with input length: {len(input_string)}")
     
     # Parse file references and text segments
     file_refs = _parse_file_references(input_string)
@@ -104,50 +89,8 @@ def generate_llm_messages(input_string: str) -> List[Dict[str, Any]]:
         "content": content_blocks
     }
     
-    logger.debug(f"Generated message with {len(content_blocks)} content blocks")
+    logger.debug(f"generate_llm_messages returning message with {len(content_blocks)} content blocks")
     return [message]
-
-
-def paths_to_file_references(file_paths: List[Tuple[PathLike, Optional[str]]]) -> str:
-    """
-    Convert a list of file paths and mimetypes to file() reference string.
-    
-    Takes a list of (path, mimetype) tuples and converts them into a string
-    containing space-separated file() references that can be used with
-    generate_llm_messages().
-    
-    Args:
-        file_paths: List of (file_path, optional_mimetype) tuples
-        
-    Returns:
-        String containing file() references separated by spaces
-        
-    Example:
-        >>> paths = [("doc.txt", "text/plain"), ("data.json", None)]
-        >>> result = paths_to_file_references(paths)
-        >>> print(result)
-        "file('doc.txt', 'text/plain') file('data.json')"
-        
-        >>> # Can be used with generate_llm_messages
-        >>> message = generate_llm_messages(f"Process {result}")
-    """
-    if not file_paths:
-        return ""
-    
-    references = []
-    for file_path, mimetype in file_paths:
-        path_str = str(file_path)
-        
-        if mimetype:
-            # Include mimetype with single quotes
-            ref = f"file('{path_str}', '{mimetype}')"
-        else:
-            # Just the file path
-            ref = f"file('{path_str}')"
-        
-        references.append(ref)
-    
-    return " ".join(references)
 
 
 def _parse_file_references(text: str) -> List[Tuple[str, Optional[str], int, int]]:
@@ -164,6 +107,8 @@ def _parse_file_references(text: str) -> List[Tuple[str, Optional[str], int, int
         List of tuples: (glob_pattern, mimetype, start_pos, end_pos)
         where mimetype is None if not specified
     """
+    logger.debug(f"_parse_file_references called with text length: {len(text)}")
+    
     # Regex pattern to match file('glob'[,mimetype])
     # Supports both single and double quotes, optional mimetype
     pattern = r"file\(\s*['\"]([^'\"]+)['\"](?:\s*,\s*['\"]([^'\"]*)['\"])?\s*\)"
@@ -178,6 +123,7 @@ def _parse_file_references(text: str) -> List[Tuple[str, Optional[str], int, int
         file_refs.append((glob_pattern, mimetype, start_pos, end_pos))
         logger.trace(f"Parsed file reference: glob='{glob_pattern}', mimetype='{mimetype}'")
     
+    logger.debug(f"_parse_file_references returning {len(file_refs)} file references")
     return file_refs
 
 
@@ -196,7 +142,7 @@ def _resolve_file_glob(glob_pattern: str, mimetype: Optional[str]) -> List[Tuple
     Returns:
         List of (filepath, mimetype) tuples for existing files
     """
-    logger.debug(f"Resolving glob pattern: {glob_pattern}")
+    logger.debug(f"_resolve_file_glob called with glob_pattern='{glob_pattern}', mimetype='{mimetype}'")
     
     try:
         # Resolve glob pattern
@@ -213,11 +159,11 @@ def _resolve_file_glob(glob_pattern: str, mimetype: Optional[str]) -> List[Tuple
             else:
                 logger.warning(f"File does not exist or is not a file: {path}")
         
-        logger.debug(f"Resolved {len(existing_files)} existing files from glob: {glob_pattern}")
+        logger.debug(f"_resolve_file_glob returning {len(existing_files)} existing files")
         return existing_files
         
     except Exception as e:
-        logger.warning(f"Error resolving glob pattern '{glob_pattern}': {e}")
+        logger.exception(f"Error resolving glob pattern '{glob_pattern}': {e}")
         return []
 
 
@@ -231,9 +177,12 @@ def _create_text_content_block(text: str) -> Dict[str, str]:
     Returns:
         Dict with text content block format: {"text": "..."}
     """
-    return {
-        "text": text
-    }
+    logger.debug(f"_create_text_content_block called with text length: {len(text)}")
+    
+    result = {"text": text}
+    
+    logger.debug("_create_text_content_block returning text block")
+    return result
 
 
 def _create_file_content_blocks(file_paths: List[Tuple[str, Optional[str]]]) -> List[Dict[str, Any]]:
@@ -249,6 +198,8 @@ def _create_file_content_blocks(file_paths: List[Tuple[str, Optional[str]]]) -> 
     Returns:
         List of content blocks (mix of file blocks and error text blocks)
     """
+    logger.debug(f"_create_file_content_blocks called with {len(file_paths)} file paths")
+    
     content_blocks = []
     
     for file_path, mimetype in file_paths:
@@ -271,7 +222,8 @@ def _create_file_content_blocks(file_paths: List[Tuple[str, Optional[str]]]) -> 
         except Exception as e:
             # Create explanatory text block for failed file
             error_text = f"Failed to read file '{file_path}': {str(e)}"
-            logger.warning(error_text)
+            logger.exception(error_text)
             content_blocks.append(_create_text_content_block(f"[{error_text}]"))
     
+    logger.debug(f"_create_file_content_blocks returning {len(content_blocks)} content blocks") 
     return content_blocks

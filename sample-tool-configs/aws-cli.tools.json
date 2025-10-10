@@ -1,0 +1,13 @@
+{
+  "id": "awslabs.aws-api-mcp-server",
+  "type": "mcp",
+  "command": "uvx",
+  "args": [
+    "-q",
+    "awslabs.aws-api-mcp-server@latest"
+  ],
+  "env": {
+    "FASTMCP_LOG_LEVEL": "ERROR"
+  },
+  "disabled": true
+}

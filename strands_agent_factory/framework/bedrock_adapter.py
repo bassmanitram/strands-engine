@@ -21,6 +21,7 @@ from typing import List, Optional, Dict, Any
 from loguru import logger
 from strands.models.bedrock import BedrockModel
 from strands.types.content import Messages
+from botocore.config import Config as BotocoreConfig
 
 from .base_adapter import FrameworkAdapter
 from ..ptypes import Tool
@@ -146,12 +147,15 @@ class BedrockAdapter(FrameworkAdapter):
         
         # Extract AWS boto client configuration
         boto_client_config = model_config.pop("boto_client_config", None)
+        if boto_client_config:
+            boto_client_config = BotocoreConfig(**boto_client_config)
+
         logger.debug(f"Extracted boto_client_config: {boto_client_config}")
         logger.debug(f"Final model_config after boto_client_config extraction: {model_config}")
         
         # Create and return the Bedrock model
         logger.debug(f"Creating BedrockModel with boto_client_config={boto_client_config}, model_config={model_config}")
-        model = BedrockModel(boto_client_config=boto_client_config, model_config=model_config)
+        model = BedrockModel(boto_client_config=boto_client_config, **model_config)
         
         logger.debug(f"BedrockModel created successfully: {type(model).__name__}")
         return model
@@ -211,7 +215,7 @@ class BedrockAdapter(FrameworkAdapter):
             if not isinstance(content, list):
                 # Handle non-list content by converting to text
                 if content:
-                    logger.trace(f"Converting non-list content to text block")
+                    logger.trace("Converting non-list content to text block")
                     transformed_messages.append({"text": str(content)})
                 continue
 
@@ -221,7 +225,7 @@ class BedrockAdapter(FrameworkAdapter):
                 logger.trace(f"Processing content block {block_idx}: {type(block)}")
                 
                 if not isinstance(block, dict):
-                    logger.trace(f"Skipping non-dict block")
+                    logger.trace("Skipping non-dict block")
                     continue
 
                 # Case 1: Handle text blocks in any format

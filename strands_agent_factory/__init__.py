@@ -13,23 +13,25 @@ The factory is designed to be embedded in larger applications while maintaining
 compatibility with strands-agents' core architecture patterns.
 
 Core Components:
-    - EngineConfig: Configuration dataclass for agent parameters
+    - AgentFactoryConfig: Configuration dataclass for agent parameters
     - AgentFactory: Main factory class for creating configured agents
 
 Example:
     Basic agent creation::
 
-        from strands_agent_factory import EngineConfig, AgentFactory
+        from strands_agent_factory import AgentFactoryConfig, AgentFactory
         
-        config = EngineConfig(
+        config = AgentFactoryConfig(
             model="gpt-4o",
             system_prompt="You are a helpful assistant."
         )
         
         factory = AgentFactory(config)
         await factory.initialize()
-        response = await factory.process_message("Hello!")
+        agent = factory.create_agent()
 """
+import nest_asyncio; 
+nest_asyncio.apply()
 
 from .config import AgentFactoryConfig
 from .factory import AgentFactory  

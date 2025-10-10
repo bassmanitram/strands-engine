@@ -1,139 +1,175 @@
-"""
-Agent wrapper implementation for strands_agent_factory.
-
-This module provides the WrappedAgent class, which extends the strands-agents
-Agent with framework-specific adaptations and enhanced message handling
-capabilities. The wrapper maintains full compatibility with strands-agents
-while adding features needed by strands_agent_factory.
-
-The WrappedAgent serves as a bridge between the strands_agent_factory configuration
-system and the strands-agents execution environment, handling message
-transformation, streaming, and framework-specific adaptations.
-"""
-
+import concurrent
+from concurrent.futures import ThreadPoolExecutor
+from contextlib import ExitStack
 import sys
-from typing import Union, List, Dict, Any
+from typing import Optional, List, Any
 
 from loguru import logger
 from strands import Agent
 
 from strands_agent_factory.framework.base_adapter import FrameworkAdapter
 from strands_agent_factory.messages import generate_llm_messages
+from strands_agent_factory.ptypes import ToolSpec
 
-
-class WrappedAgent(Agent):
+class AgentProxy:
+    """Proxy for Agent that manages MCP server lifecycle and defers agent creation until context entry.
+    
+    This proxy ensures MCP servers are properly initialized before creating the underlying Agent,
+    preventing premature agent creation and ensuring all tools are available.
     """
-    Enhanced Agent wrapper with framework adapter integration.
     
-    WrappedAgent extends the strands-agents Agent class to provide framework-
-    specific message transformation and enhanced streaming capabilities. It
-    maintains full compatibility with the strands-agents interface while
-    adding features required by strands_agent_factory.
-    
-    Key features:
-    - Framework-specific message transformation via adapters
-    - Enhanced error handling and logging
-    - Streaming response handling with callback integration
-    - Transparent compatibility with strands-agents ecosystem
-    
-    The wrapper pattern allows strands_agent_factory to enhance agent behavior
-    without modifying the core strands-agents implementation, ensuring
-    compatibility and maintainability.
-    
-    Attributes:
-        adapter: The FrameworkAdapter instance for message transformations
-        
-    Example:
-        Creating a wrapped agent::
-        
-            adapter = OpenAIAdapter()
-            agent = WrappedAgent(
-                adapter=adapter,
-                model=model,
-                tools=tools,
-                callback_handler=handler
-            )
-            
-            success = await agent.send_message_to_agent("Hello!")
-    """
-
-    def __init__(self, adapter: FrameworkAdapter, **kwargs: Any) -> None:
-        """
-        Initialize the wrapped agent with framework adapter.
-        
-        Creates a WrappedAgent instance that extends strands-agents Agent
-        functionality with framework-specific adaptations. The adapter
-        is stored before calling the parent constructor to ensure it's
-        available for all agent operations.
+    def __init__(self, adapter: FrameworkAdapter, tool_specs: List[ToolSpec], **kwargs: Any) -> None:
+        """Initialize the AgentProxy with configuration for later agent creation.
         
         Args:
-            adapter: FrameworkAdapter instance for message transformations
-            **kwargs: Additional arguments passed to the parent Agent constructor
-            
-        Note:
-            All standard Agent constructor arguments (model, tools, callback_handler,
-            etc.) are supported through **kwargs and passed directly to the
-            parent class constructor.
+            adapter: Framework adapter for message transformations
+            tool_specs: List of tool specifications including MCP server clients
+            **kwargs: Arguments to pass to Agent constructor during __enter__
         """
-        logger.debug(f"WrappedAgent.__init__ called with adapter={type(adapter).__name__}, kwargs keys: {list(kwargs.keys())}")
+        logger.debug(f"AgentProxy.__init__ called with {len(tool_specs)} tool specs")
         
-        # Store adapter before calling parent constructor
-        self.adapter = adapter
+        self._adapter = adapter
+        self._tool_specs = tool_specs or []
+        self._agent_kwargs = kwargs
+        self._agent: Optional[Agent] = None
+        self._context_entered = False
+    
+        # Separate MCP server specs from regular tools
+        self._mcp_server_specs = [obj for obj in tool_specs if obj.get("client")]
+        self._tools = []
+        for spec in tool_specs:
+            if spec.get("tools"):
+                self._tools.extend(spec["tools"])
 
-        # Call parent constructor with all other arguments
-        logger.debug(f"Calling parent Agent.__init__ with kwargs: {kwargs}")
-        super().__init__(**kwargs)
-        logger.debug("WrappedAgent initialization completed")
+        self._mcp_tools = []
+        self._max_threads = 3
+        self._exit_stack = None
+        self._active_mcp_servers = []
+        
+        logger.debug(f"AgentProxy.__init__ completed - {len(self._mcp_server_specs)} MCP servers, {len(self._tools)} regular tools")
 
-
-
-    async def _handle_agent_stream(self,
-        message: str) -> bool:
+    def __enter__(self):
+        """Initialize MCP servers and create the underlying Agent.
+        
+        Returns:
+            self: The proxy instance for use in the context manager
         """
-        Handle streaming agent response with framework-specific transformations.
+        logger.debug(f"AgentProxy.__enter__ called with {len(self._mcp_server_specs)} MCP server specs")
         
-        Processes a message through the framework adapter and streams the
-        agent's response. This method provides the core message handling
-        logic with error handling and framework adaptation.
-        
-        The method:
-        1. Validates the input message
-        2. Applies framework-specific transformations via the adapter
-        3. Streams the response through the agent's streaming interface
-        4. Handles errors gracefully with appropriate logging and user feedback
+        # Extract MCP clients from tool specs
+        mcp_clients = [spec["client"] for spec in self._mcp_server_specs]
+
+        # Initialize MCP servers concurrently
+        futures_with_clients = []
+        if mcp_clients:
+            self._exit_stack = ExitStack()
+            with ThreadPoolExecutor(max_workers=self._max_threads) as executor:
+                for client in mcp_clients:
+                    future = executor.submit(self._call_single_enter_safely, client)
+                    futures_with_clients.append((future, client))
+
+                # Wait for all MCP server initializations to complete
+                done, not_done = concurrent.futures.wait([item[0] for item in futures_with_clients], 
+                                            return_when=concurrent.futures.ALL_COMPLETED)
+                
+                if not_done:
+                    logger.warning("Some MCP server initializations were not done even though the 'wait for all' returned")
+
+                # Process results and register successful clients
+                for future, client in futures_with_clients:
+                    try:
+                        _resource = future.result()
+                        self._exit_stack.push(client.__exit__)
+                        self._active_mcp_servers.append(client)
+                        logger.debug(f"Successfully initialized MCP client: {client.server_id}")
+                    except Exception as e:
+                        logger.warn(f"MCP client initialization failed for {getattr(client, 'server_id', 'unknown')}: {e}")
+
+            # Collect tools from all active MCP servers
+            for client in self._active_mcp_servers:
+                try:
+                    self._mcp_tools.extend(client.list_tools_sync());
+                except Exception as e:
+                    logger.exception(f"MCP client tools listing failed for {getattr(client, 'server_id', 'unknown')}: {e}")
+
+        # Create the actual Agent with all tools available
+        self._context_entered = True
+        self._agent = Agent(tools=(self._tools + self._mcp_tools), **self._agent_kwargs)
+
+        logger.debug(f"AgentProxy.__enter__ completed with {len(self._active_mcp_servers)} active MCP servers")
+        return self
+    
+    def _call_single_enter_safely(self, manager):
+        """Initialize a single MCP server context manager in a worker thread.
         
         Args:
-            message: Message to process - can be string or structured content
+            manager: MCP client context manager to initialize
+            
+        Returns:
+            Result from the manager's __enter__ method
+        """
+        logger.debug(f"_call_single_enter_safely called for manager type: {type(manager).__name__}")
+        
+        result = manager.__enter__()
+        
+        logger.debug("_call_single_enter_safely completed")
+        return result
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        """Clean up MCP servers and agent resources.
+        
+        Args:
+            exc_type: Exception type if exiting due to exception
+            exc_val: Exception value if exiting due to exception  
+            exc_tb: Exception traceback if exiting due to exception
+            
+        Returns:
+            bool: False to propagate any exceptions
+        """
+        logger.debug(f"AgentProxy.__exit__ called with exc_type={exc_type}")
+        
+        # Clean up agent first to prevent access during MCP cleanup
+        self._context_entered = False
+        self._agent = None
+        
+        if self._exit_stack:
+            result = self._exit_stack.__exit__(exc_type, exc_val, exc_tb)
+            self._active_mcp_servers = []
+            self._mcp_tools = []
+            logger.debug("AgentProxy.__exit__ completed with exit stack cleanup")
+            return result
+        
+        self._active_mcp_servers = []
+        self._mcp_tools = []
+        logger.debug("AgentProxy.__exit__ completed (no exit stack)")
+        return False
+    
+    async def _handle_agent_stream(self, message: str) -> bool:
+        """Process a message through the agent with framework-specific transformations.
+        
+        Args:
+            message: Message to process through the agent
             
         Returns:
             bool: True if message was processed successfully, False on error
-            
-        Note:
-            The CustomCallbackHandler (if configured) handles all output
-            formatting during streaming. This method focuses on message
-            processing and error handling.
         """
-        logger.debug(f"handle_agent_stream called with message type: {type(message)}, content preview: {str(message)[:100] if message else 'None'}")
+        logger.debug(f"_handle_agent_stream called with message type: {type(message)}")
+        self._ensure_agent_available()
         
         if not message:
-            logger.debug("Empty message, returning True")
+            logger.debug("_handle_agent_stream returning True (empty message)")
             return True
 
         try:
             # Transform the message using the framework adapter
-            logger.debug(f"Creating messages from input")
             messages = generate_llm_messages(message)
-            logger.debug(f"Transforming message using adapter: {type(self.adapter).__name__}")
-            transformed_messages = self.adapter.adapt_content(messages)
-            logger.debug(f"Message transformed, type: {type(transformed_messages)}")
+            transformed_messages = self._adapter.adapt_content(messages)
 
-            # Stream the response - the CallbackHandler handles all output formatting
-            logger.debug("Starting agent streaming...")
+            # Stream the response through the agent
             async for chunk in self.stream_async(transformed_messages):
-                logger.trace(f"Received stream chunk: {chunk}")
-                pass
+                pass  # CallbackHandler processes all output
 
-            logger.debug("Agent streaming completed successfully")
+            logger.debug("_handle_agent_stream completed successfully")
             return True
         except Exception as e:
             logger.exception(f"Unexpected error in agent stream")
@@ -141,22 +177,11 @@ class WrappedAgent(Agent):
                 f"\nAn unexpected error occurred while generating the response: {e}",
                 file=sys.stderr,
             )
+            logger.debug("_handle_agent_stream completed with error")
             return False
 
-    async def send_message_to_agent(self,
-        message: str,
-        show_user_input: bool = True
-    ) -> bool:
-        """
-        Send a message to the agent with optional input display.
-        
-        Higher-level interface for agent interaction that combines message
-        display and processing. This method provides a clean API for
-        applications that need both input echoing and response generation.
-        
-        The method optionally displays the user input (for conversational
-        interfaces) and then processes the message through the streaming
-        handler with all framework adaptations applied.
+    async def send_message_to_agent(self, message: str, show_user_input: bool = True) -> bool:
+        """Send a message to the agent with optional input display.
         
         Args:
             message: Message to send to the agent
@@ -164,24 +189,85 @@ class WrappedAgent(Agent):
             
         Returns:
             bool: True if message was processed successfully, False on error
-            
-        Example:
-            Basic usage::
-            
-                # With input display (conversational mode)
-                success = await agent.send_message_to_agent("Hello!", show_user_input=True)
-                
-                # Without input display (programmatic mode)  
-                success = await agent.send_message_to_agent(message, show_user_input=False)
-                
-        Note:
-            Input display only occurs for string messages. Structured content
-            (List[Dict]) is not displayed as it may contain complex formatting
-            or binary data that's not suitable for text display.
         """
         logger.debug(f"send_message_to_agent called with message type: {type(message)}, show_user_input: {show_user_input}")
+        self._ensure_agent_available()
         
         if show_user_input:
             print(f"You: {message}")
 
-        return await self._handle_agent_stream(message)
+        result = await self._handle_agent_stream(message)
+        
+        logger.debug(f"send_message_to_agent returning: {result}")
+        return result
+    
+    def _ensure_agent_available(self):
+        """Validate that the agent is available for use.
+        
+        Raises:
+            RuntimeError: If agent is accessed outside of context manager
+        """
+        logger.debug("_ensure_agent_available called")
+        
+        if not self._context_entered or self._agent is None:
+            logger.debug("_ensure_agent_available failed - agent not available")
+            raise RuntimeError(
+                "Agent not available. Use AgentProxy within a context manager:\n"
+                "with AgentProxy(...) as agent:\n"
+                "    agent.do_something()"
+            )
+        
+        logger.debug("_ensure_agent_available completed - agent available")
+    
+    def __getattr__(self, name: str) -> Any:
+        """Delegate attribute access to the underlying agent.
+        
+        Args:
+            name: Name of the attribute to access
+            
+        Returns:
+            Any: The attribute value from the underlying agent
+        """
+        logger.debug(f"__getattr__ called for attribute: {name}")
+        self._ensure_agent_available()
+        result = getattr(self._agent, name)
+        logger.debug(f"__getattr__ completed for attribute: {name}")
+        return result
+    
+    def __setattr__(self, name: str, value: Any) -> None:
+        """Delegate attribute setting to the underlying agent or handle internal attributes.
+        
+        Args:
+            name: Name of the attribute to set
+            value: Value to set the attribute to
+        """
+        logger.debug(f"__setattr__ called for attribute: {name}")
+        
+        if name.startswith('_'):  # Internal attributes
+            object.__setattr__(self, name, value)
+            logger.debug(f"__setattr__ completed for internal attribute: {name}")
+        else:
+            self._ensure_agent_available()
+            setattr(self._agent, name, value)
+            logger.debug(f"__setattr__ completed for agent attribute: {name}")
+    
+    def __call__(self, *args, **kwargs):
+        """Make the proxy callable like the underlying agent.
+        
+        Args:
+            *args: Positional arguments to pass to the agent
+            **kwargs: Keyword arguments to pass to the agent
+            
+        Returns:
+            Any: Result from calling the underlying agent
+        """
+        logger.debug(f"__call__ called with {len(args)} args, {len(kwargs)} kwargs")
+        self._ensure_agent_available()
+        result = self._agent(*args, **kwargs)
+        logger.debug("__call__ completed")
+        return result
+    
+    # Other convenient things to do
+    def clear_messages(self):
+        self._ensure_agent_available()
+        self._agent.messages.clear()

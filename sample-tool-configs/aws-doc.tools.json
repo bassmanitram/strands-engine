@@ -1,0 +1,6 @@
+{
+  "id": "aws-knowledge-mcp-server",
+  "type": "mcp",
+  "url": "https://knowledge-mcp.global.api.aws",
+  "disabled": true
+}

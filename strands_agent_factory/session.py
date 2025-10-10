@@ -66,6 +66,7 @@ class DelegatingSession(SessionManager):
     """
 
     def __init__(self, session_name: Optional[str], sessions_home: Optional[str | Path] = None):
+        logger.debug(f"DelegatingSession.__init__ called with session_name={session_name}, sessions_home={sessions_home}")
         """
         Initialize the session proxy.
         
@@ -427,7 +428,7 @@ class DelegatingSession(SessionManager):
                 return False
             
         except Exception as e:
-            logger.error(f"Error deleting session '{session_id}': {e}")
+            logger.warning(f"Error deleting session '{session_id}': {e}")
             return False
 
     def get_session_info(self) -> dict:

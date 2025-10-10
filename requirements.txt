@@ -1,0 +1,16 @@
+# Core dependencies for strands-agent-factory
+# These are the minimum required packages for the library to function
+
+# Tools doesn't work with later agents versions yet
+strands-agents==1.10.0
+strands-agents-tools
+
+# Logging framework
+loguru>=0.6.0
+
+# YAML parsing for configuration files
+PyYAML>=6.0
+
+# We need nested async because ... well some sync things in strands seem to thing they couldn't POSSIBLY
+# be running in an async conext!
+nest_asyncio

@@ -1,35 +1,63 @@
 """
-Type definitions and protocols for strands_agent_factory.
+Type definitions and data structures for strands_agent_factory.
 
-This module provides the core type definitions, protocols, and data structures used
-throughout the strands_agent_factory package. It defines interfaces for tools, framework
-adapters, and configuration objects while maintaining compatibility with strands-agents.
+This module defines the core types, protocols, and data structures used throughout
+strands_agent_factory for configuration, tool management, and runtime operations.
+The types provide strong typing guarantees while maintaining flexibility for
+extensibility and framework adaptation.
 
-The types are organized into several categories:
-- Common type aliases for paths and JSON data
-- Message and conversation types
-- Tool configuration and discovery types  
-- Framework adapter protocols
-- File content handling types
-- Tool specification types for runtime handling
+Key type categories:
+- Configuration types: For loading and validating user configurations
+- Tool specification types: For describing how tools should be loaded
+- Runtime protocol types: For tool execution and framework integration
+- Discovery and reporting types: For tool discovery and error reporting
 
-These types provide strong typing support and clear contracts between components
-while allowing flexibility in implementation details.
+All types are designed to be JSON-serializable where appropriate and provide
+clear interfaces for the various components of strands_agent_factory.
 """
 
-from typing import Any, Dict, List, Optional, Union, Protocol, runtime_checkable, NamedTuple
-from typing_extensions import TypedDict
+from typing import Any, Dict, List, Optional, Union, TypedDict, Protocol, runtime_checkable
 from pathlib import Path
 
 # ============================================================================
-# Common Type Aliases
+# Core Type Aliases
 # ============================================================================
 
 PathLike = Union[str, Path]
-"""Type alias for filesystem paths - accepts strings or Path objects."""
+"""Type alias for filesystem paths - accepts both strings and Path objects."""
 
 JSONDict = Dict[str, Any]
 """Type alias for JSON-like dictionary structures."""
+
+ToolConfig = Dict[str, Any]
+"""
+Configuration dictionary for a single tool.
+
+Common fields across all tool types:
+- id: Unique identifier for the tool
+- type: Tool type ("python", "mcp", etc.)
+- disabled: Optional boolean to skip tool loading
+- functions: Optional list of specific functions to load
+
+Additional fields vary by tool type and are validated by the appropriate adapter.
+"""
+
+Tool = Any
+"""
+Type alias for tool instances.
+
+Tools can be any callable object (function, class method, etc.) that conforms
+to the strands-agents tool interface. The actual type depends on the tool
+source and framework adapter.
+"""
+
+FrameworkAdapter = Any
+"""
+Type alias for framework adapter instances.
+
+Framework adapters handle model loading, tool adaptation, and framework-specific
+configuration. The actual type depends on the specific framework being used.
+"""
 
 
 # ============================================================================
@@ -52,112 +80,102 @@ class Message(TypedDict):
 
 
 # ============================================================================
-# Tool Configuration Types
+# Tool Discovery and Reporting Types  
 # ============================================================================
 
-class BaseToolConfig(TypedDict):
+class ToolDiscoveryResult:
     """
-    Base configuration for all tool configurations.
+    Results from tool configuration discovery operations.
     
-    Provides the common fields that all tool configurations must include,
-    regardless of their specific implementation type.
-    
-    Attributes:
-        id: Unique identifier for the tool configuration
-        type: Tool type - determines which adapter handles the tool
-        disabled: Whether the tool should be skipped during loading
-    """
-    id: str
-    type: str
-    disabled: bool
-
-
-class MCPToolConfig(BaseToolConfig):
-    """
-    Configuration for Model Context Protocol (MCP) tools.
-    
-    Handles configuration for MCP-based tools that communicate via stdio
-    or HTTP transports. The engine manages connection lifecycle but delegates
-    actual tool execution to strands-agents.
+    Provides comprehensive reporting on tool configuration loading including
+    success/failure statistics and detailed error information for debugging
+    and monitoring purposes.
     
     Attributes:
-        command: Command to execute for stdio transport (optional)
-        args: Command line arguments for stdio transport (optional)
-        env: Environment variables for process (optional)
-        url: URL for HTTP transport (optional)
-        functions: Filter for specific functions to expose (optional)
+        successful_configs: List of successfully loaded configurations
+        failed_configs: List of failed configurations with error details
+        total_files_scanned: Total number of configuration files processed
+        
+    Example:
+        Processing discovery results::
+        
+            configs, discovery = factory.load_tool_configs(paths)
+            
+            print(f"Loaded {len(discovery.successful_configs)} configurations")
+            print(f"Failed {len(discovery.failed_configs)} configurations")
+            
+            for failed in discovery.failed_configs:
+                print(f"Error in {failed['file_path']}: {failed['error']}")
     """
-    # For stdio transport
-    command: Optional[str]
-    args: Optional[List[str]]
-    env: Optional[Dict[str, str]]
-    # For HTTP transport  
-    url: Optional[str]
-    # Optional function filtering
-    functions: Optional[List[str]]
 
+    def __init__(self, successful_configs: List[ToolConfig], failed_configs: List[Dict[str, Any]], total_files_scanned: int):
+        """
+        Initialize discovery result with configuration loading statistics.
+        
+        Args:
+            successful_configs: Configurations that loaded successfully
+            failed_configs: Configurations that failed with error details
+            total_files_scanned: Total number of files that were processed
+        """
+        self.successful_configs = successful_configs
+        self.failed_configs = failed_configs
+        self.total_files_scanned = total_files_scanned
 
-class PythonToolConfig(BaseToolConfig):
-    """
-    Configuration for Python-based tools.
-    
-    Handles configuration for tools implemented as Python modules or functions.
-    The engine handles module loading and discovery while strands-agents manages
-    execution.
-    
-    Attributes:
-        module_path: Python module path (e.g., 'mypackage.tools')
-        functions: List of function names to expose as tools
-        package_path: Optional package search path (optional)
-        source_file: Discovered source file path (set by discovery process)
-    """
-    module_path: str
-    functions: List[str]
-    package_path: Optional[str]
-    source_file: Optional[str]
+    @property
+    def success_rate(self) -> float:
+        """Calculate the success rate as a percentage."""
+        if self.total_files_scanned == 0:
+            return 0.0
+        return (len(self.successful_configs) / self.total_files_scanned) * 100
 
-
-ToolConfig = Union[MCPToolConfig, PythonToolConfig]
-"""Union type representing all possible tool configuration types."""
+    def __repr__(self) -> str:
+        return (f"ToolDiscoveryResult(successful={len(self.successful_configs)}, "
+                f"failed={len(self.failed_configs)}, "
+                f"total={self.total_files_scanned}, "
+                f"success_rate={self.success_rate:.1f}%)")
 
 
 # ============================================================================
 # Tool Specification Types
 # ============================================================================
 
-class StandardToolSpec(TypedDict):
+class ToolSpec(TypedDict, total=False):
     """
-    Tool specification for standard (Python-based) tools.
+    Unified tool specification for all tool types.
     
-    Standard tools are loaded directly as tool instances and are ready
-    for immediate use by strands-agents.
+    A ToolSpec describes how to load and execute tools but does not contain
+    the actual tool instances. It serves as a bridge between tool discovery
+    and tool execution, allowing strands-agents to handle the actual tool
+    instantiation and execution.
     
-    Attributes:
-        type: Always "standard" for standard tools
-        tool: The loaded tool instance ready for execution
-    """
-    type: str  # Always "standard"
-    tool: Any
-
-
-class MCPToolSpec(TypedDict):
-    """
-    Tool specification for MCP (Model Context Protocol) tools.
-    
-    MCP tools require a client connection to access their functionality.
-    The client encapsulates all connection details, filtering, and server
-    identification.
+    The specification supports both standard Python tools (loaded immediately)
+    and MCP tools (connection deferred until execution).
     
     Attributes:
-        type: Always "mcp" for MCP tools
-        client: MCPClient instance with connection and filtering capabilities
+        client: MCPClient instance for MCP tools (None for standard tools)
+        tools: List of tool instances for standard tools (None for MCP tools)
+        
+    Examples:
+        Standard Python tool spec::
+        
+            spec = {
+                "tools": [add_function, subtract_function],
+                "client": None
+            }
+            
+        MCP tool spec::
+        
+            spec = {
+                "client": mcp_client_instance,
+                "tools": None
+            }
+            
+    Note:
+        Exactly one of 'client' or 'tools' should be set. The other should be None.
+        This design allows for easy extension to additional tool types in the future.
     """
-    type: str  # Always "mcp"
-    client: Any  # MCPClient instance
-
-
-ToolSpec = Union[StandardToolSpec, MCPToolSpec]
-"""Union type representing all possible tool specifications."""
+    client: Optional[Any]  # MCPClient for MCP tools, None for others
+    tools: Optional[List[Tool]]  # Tool instances for standard tools, None for MCP
 
 
 # ============================================================================
@@ -165,133 +183,148 @@ ToolSpec = Union[StandardToolSpec, MCPToolSpec]
 # ============================================================================
 
 @runtime_checkable
-class Tool(Protocol):
+class ToolExecutor(Protocol):
     """
-    Protocol for tool objects provided by strands-agents.
+    Protocol for tool execution interfaces.
     
-    This protocol defines the interface that the engine expects from tool
-    objects, without requiring knowledge of specific implementation details.
-    The actual tool execution is handled by strands-agents.
+    Defines the interface that tool executors must implement to participate
+    in the strands-agents tool execution system. This protocol ensures
+    compatibility across different tool sources while allowing framework-
+    specific adaptations.
     """
-    pass
 
-
-# ============================================================================
-# Tool Operation Result Types
-# ============================================================================
-
-class ToolCreationResult(NamedTuple):
-    """
-    Detailed result of tool creation operations.
-    
-    Provides comprehensive information about tool creation success/failure
-    including tracking of requested vs. found functions for debugging.
-    
-    Attributes:
-        tools: Successfully created tool objects (default: empty list)
-        requested_functions: Function names that were requested (default: empty list)
-        found_functions: Function names that were successfully found (default: empty list)
-        missing_functions: Function names that were requested but not found (default: empty list)
-        error: Error message if creation failed (default: None)
-        mcp_client: MCP client instance for MCP-based tools (default: None)
-    """
-    tools: List[Any] = []
-    requested_functions: List[str] = []
-    found_functions: List[str] = []
-    missing_functions: List[str] = []
-    error: Optional[str] = None
-    mcp_client: Optional[Any] = None
-
-
-class ToolDiscoveryResult(NamedTuple):
-    """
-    Result of tool configuration discovery operations.
-    
-    Provides summary information about configuration file scanning and
-    parsing operations across multiple configuration sources.
-    
-    Attributes:
-        successful_configs: Tool configurations that were successfully parsed
-        failed_configs: Configuration entries that failed to parse
-        total_files_scanned: Total number of configuration files processed
-    """
-    successful_configs: List[ToolConfig]
-    failed_configs: List[Dict[str, Any]]
-    total_files_scanned: int
-
-
-# ============================================================================
-# Framework Adapter Protocol
-# ============================================================================
-
-@runtime_checkable
-class FrameworkAdapter(Protocol):
-    """
-    Protocol for framework-specific adapters.
-    
-    Framework adapters handle the integration between strands_agent_factory and
-    different AI provider frameworks (OpenAI, Anthropic, etc.). They manage
-    model loading, tool adaptation, and framework-specific configuration.
-    
-    Methods:
-        adapt_tools: Transform tools for framework compatibility
-        prepare_agent_args: Prepare arguments for Agent initialization
-    """
-    
-    def adapt_tools(self, tools: List[Tool]) -> List[Tool]:
+    def execute(self, tool_name: str, arguments: Dict[str, Any]) -> Any:
         """
-        Adapt tools for the specific framework.
-        
-        Different frameworks may require different tool formats, schemas,
-        or modifications. This method handles those transformations.
+        Execute a tool with the given arguments.
         
         Args:
-            tools: List of tool objects to adapt
+            tool_name: Name of the tool to execute
+            arguments: Dictionary of arguments to pass to the tool
             
         Returns:
-            List of framework-adapted tool objects
+            Any: Result of tool execution
+            
+        Raises:
+            ToolExecutionError: If tool execution fails
+            ToolNotFoundError: If requested tool is not available
         """
         ...
-    
-    def prepare_agent_args(self, 
-                          system_prompt: Optional[str] = None,
-                          messages: Optional[List[Message]] = None,
-                          **kwargs) -> Dict[str, Any]:
+
+    def list_available_tools(self) -> List[str]:
         """
-        Prepare arguments for Agent initialization.
+        List all available tools that can be executed.
         
-        Handles framework-specific argument preparation including message
-        formatting, system prompt handling, and other configuration.
-        
-        Args:
-            system_prompt: System prompt to use (optional)
-            messages: Existing message history (optional)
-            **kwargs: Additional framework-specific arguments
-            
         Returns:
-            Dictionary of arguments for Agent constructor
+            List[str]: Names of available tools
         """
         ...
 
 
 # ============================================================================
-# File Content Types
+# Configuration Management Types
 # ============================================================================
 
-class FileContent(NamedTuple):
+class ConfigurationError(Exception):
     """
-    Processed file content for agent consumption.
+    Exception raised for configuration-related errors.
     
-    Represents a file that has been processed and prepared for inclusion
-    in agent conversations or system prompts.
+    Used when configuration files cannot be loaded, parsed, or validated.
+    Provides detailed error information for debugging and user feedback.
     
     Attributes:
-        path: Original file path
-        content: Processed text content
-        mimetype: Detected MIME type (optional)
-        metadata: Additional file metadata
+        config_path: Path to the configuration file that caused the error
+        config_key: Specific configuration key that caused the error (optional)
+        original_error: The underlying exception that triggered this error (optional)
     """
-    path: Path
-    content: str
-    mimetype: Optional[str]
-    metadata: Dict[str, Any]
+
+    def __init__(self, message: str, config_path: Optional[PathLike] = None, 
+                 config_key: Optional[str] = None, original_error: Optional[Exception] = None):
+        """
+        Initialize configuration error with detailed context.
+        
+        Args:
+            message: Human-readable error description
+            config_path: Path to the problematic configuration file
+            config_key: Specific configuration key that failed
+            original_error: Underlying exception that caused this error
+        """
+        super().__init__(message)
+        self.config_path = config_path
+        self.config_key = config_key
+        self.original_error = original_error
+
+    def __str__(self) -> str:
+        """Return formatted error message with context."""
+        parts = [super().__str__()]
+        
+        if self.config_path:
+            parts.append(f"Config file: {self.config_path}")
+        if self.config_key:
+            parts.append(f"Config key: {self.config_key}")
+        if self.original_error:
+            parts.append(f"Caused by: {self.original_error}")
+            
+        return " | ".join(parts)
+
+
+# ============================================================================
+# Tool Execution Error Types
+# ============================================================================
+
+class ToolExecutionError(Exception):
+    """
+    Exception raised when tool execution fails.
+    
+    Provides detailed context about tool execution failures including
+    the tool name, arguments, and underlying error information.
+    """
+
+    def __init__(self, tool_name: str, message: str, arguments: Optional[Dict[str, Any]] = None,
+                 original_error: Optional[Exception] = None):
+        """
+        Initialize tool execution error.
+        
+        Args:
+            tool_name: Name of the tool that failed
+            message: Human-readable error description
+            arguments: Arguments that were passed to the tool
+            original_error: Underlying exception that caused the failure
+        """
+        super().__init__(message)
+        self.tool_name = tool_name
+        self.arguments = arguments or {}
+        self.original_error = original_error
+
+
+class ToolNotFoundError(Exception):
+    """
+    Exception raised when a requested tool cannot be found.
+    
+    Used when attempting to execute a tool that is not available
+    in the current tool registry or MCP server.
+    """
+
+    def __init__(self, tool_name: str, available_tools: Optional[List[str]] = None):
+        """
+        Initialize tool not found error.
+        
+        Args:
+            tool_name: Name of the requested tool that was not found
+            available_tools: List of available tool names for reference
+        """
+        message = f"Tool '{tool_name}' not found"
+        if available_tools:
+            message += f". Available tools: {', '.join(available_tools)}"
+        
+        super().__init__(message)
+        self.tool_name = tool_name
+        self.available_tools = available_tools or []
+
+
+# ============================================================================
+# Legacy Type Aliases (Deprecated)
+# ============================================================================
+
+# These are kept for backward compatibility but should not be used in new code
+StandardToolSpec = ToolSpec  # Deprecated: Use ToolSpec instead
+MCPToolSpec = ToolSpec      # Deprecated: Use ToolSpec instead

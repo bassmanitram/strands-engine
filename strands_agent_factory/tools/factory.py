@@ -1,36 +1,83 @@
 """
-Tool factory implementation for strands_agent_factory.
+Consolidated tool factory for strands_agent_factory.
 
-This module provides the ToolFactory class, which serves as the central coordinator
-for tool discovery, loading, and specification creation in strands_agent_factory. The factory
-uses a registry of adapters to support multiple tool types while providing consistent
-error handling and resource management.
-
-The factory handles the complete tool specification lifecycle from configuration discovery
-through tool spec creation, but does not create actual tool instances. Tool specification
-describes how tools should be loaded and executed later, maintaining clear separation of
-concerns between tool discovery and tool execution.
-
-Key capabilities:
-- Multi-source tool configuration loading (JSON/YAML files)
-- Adapter-based tool specification creation supporting MCP, Python, and custom types
-- Comprehensive error handling and reporting
-- Resource lifecycle management via ExitStack integration
-- Detailed logging and debugging support
+This module provides the complete tool management system in a single file,
+eliminating base classes and adapter patterns in favor of direct dispatch.
+Supports Python tools and MCP tools with auto-detection.
 """
 
-from contextlib import ExitStack
+import os
 from pathlib import Path
-from typing import Any, Dict, List, Tuple
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from loguru import logger
 
 from strands_agent_factory.utils import load_structured_file
+from strands_agent_factory.python_tools import import_python_item
 
 from ..ptypes import PathLike, ToolConfig, ToolDiscoveryResult, ToolSpec
-from .base_adapter import ToolAdapter, ToolSpecCreationResult
-from .python_adapter import PythonToolAdapter
-from .mcp_adapters import MCPHTTPAdapter, MCPStdIOAdapter
+
+# MCP imports with availability check
+try:
+    from strands.tools.mcp import MCPClient as StrandsMCPClient
+    _STRANDS_MCP_AVAILABLE = True
+except ImportError:
+    _STRANDS_MCP_AVAILABLE = False
+    StrandsMCPClient = object
+
+
+class ToolSpecCreationResult:
+    """
+    Result of tool specification creation operations.
+    
+    Provides comprehensive information about tool spec creation success/failure
+    including metadata for debugging and tracking.
+    """
+    
+    def __init__(self, tool_spec: ToolSpec = None, requested_functions: list = None, error: str = None):
+        self.tool_spec = tool_spec
+        self.requested_functions = requested_functions or []
+        self.error = error
+
+
+class MCPClient(StrandsMCPClient):
+    """Enhanced strands MCPClient with filtering and server identification."""
+    
+    def __init__(self, server_id: str, transport_callable: Callable, requested_functions: Optional[List[str]] = None):
+        logger.debug(f"MCPClient.__init__ called with server_id='{server_id}', requested_functions={requested_functions}")
+        
+        if not _STRANDS_MCP_AVAILABLE:
+            logger.error("MCP dependencies not installed")
+            raise ImportError("MCP dependencies not installed")
+            
+        self.server_id = server_id
+        self.requested_functions = requested_functions or []
+        super().__init__(transport_callable)
+        
+        logger.debug(f"MCPClient.__init__ completed for server_id='{server_id}'")
+    
+    def list_tools_sync(self, pagination_token: Optional[str] = None):
+        """List tools with optional filtering by requested_functions."""
+        logger.debug(f"list_tools_sync called with pagination_token={pagination_token}, requested_functions={self.requested_functions}")
+        
+        all_tools = super().list_tools_sync(pagination_token)
+        
+        if not self.requested_functions:
+            logger.debug(f"list_tools_sync returning {len(all_tools) if all_tools else 0} unfiltered tools")
+            return all_tools
+            
+        # Filter tools by requested function names
+        filtered_tools = []
+        for requested_func in self.requested_functions:
+            for tool in all_tools:
+                if tool.tool_name == requested_func:
+                    filtered_tools.append(tool)
+                    break
+            else:
+                logger.warning(f"Function '{requested_func}' not found on MCP server '{self.server_id}'")
+        
+        logger.debug(f"list_tools_sync returning {len(filtered_tools)} filtered tools")
+        return filtered_tools
 
 
 class ToolFactory:
@@ -39,120 +86,44 @@ class ToolFactory:
     
     ToolFactory coordinates the complete tool specification management lifecycle for
     strands_agent_factory, from configuration file discovery through tool specification
-    creation. It uses a registry of tool adapters to support multiple tool
-    types while providing consistent error handling and resource management.
-    
-    The factory is designed around these principles:
-    - Configuration-driven tool discovery and loading
-    - Adapter pattern for extensible tool type support
-    - Tool specification creation (not actual tool instances)
-    - Comprehensive error handling with detailed reporting
-    - Resource lifecycle management via ExitStack integration
-    - Clear separation between tool specification and execution
-    
-    Supported tool types:
-    - "python": Native Python functions and modules
-    - "mcp-stdio": Model Context Protocol via stdio transport
-    - "mcp-http": Model Context Protocol via HTTP transport
-    - "mcp": Auto-detect MCP transport based on configuration
+    creation. Uses direct dispatch instead of adapter pattern for simplicity.
     
     The factory creates tool specifications that describe how to load and execute
-    tools, but never executes tools directly. This separation ensures clean
-    architecture boundaries and allows strands-agents to handle tool execution
-    with its own security and error handling mechanisms.
-    
-    Attributes:
-        _adapters: Registry of tool adapters by type
-        
-    Example:
-        Basic usage::
-        
-            with ExitStack() as stack:
-                factory = ToolFactory(stack)
-                
-                # Load configurations from files
-                configs, result = factory.load_tool_configs(["/path/to/tools/"])
-                
-                # Create tool specifications
-                tool_specs = factory.create_tool_specs(configs)
-                
-                # Tool specs are now ready for strands-agents to process
+    tools, but never executes tools directly.
     """
 
-    def __init__(self, exit_stack: ExitStack):
+    def __init__(self, file_paths: List[PathLike]):
         """
-        Initialize the tool factory with resource management.
-        
-        Creates a ToolFactory with the standard set of tool adapters
-        and associates it with an ExitStack for proper resource lifecycle
-        management. The ExitStack ensures that all tool connections and
-        resources are properly cleaned up when the factory scope ends.
+        Initialize ToolFactory with configuration file paths.
         
         Args:
-            exit_stack: ExitStack instance for resource cleanup management.
-                       All tool adapters will register their cleanup handlers
-                       with this stack to ensure proper resource management.
-                       
-        Note:
-            The factory automatically registers standard adapters for Python,
-            MCP stdio, and MCP HTTP tool types. Custom adapters can be added
-            by extending the _adapters registry after initialization.
+            file_paths: List of paths to tool configuration files
         """
-        self._adapters: Dict[str, ToolAdapter] = {
-            "python": PythonToolAdapter(exit_stack),
-            "mcp-stdio": MCPStdIOAdapter(exit_stack),
-            "mcp-http": MCPHTTPAdapter(exit_stack)
-        }
+        logger.debug(f"ToolFactory.__init__ called with {len(file_paths) if file_paths else 0} file paths")
+        
+        # Load configurations at construction time
+        self._tool_configs, self._tool_discovery_results = self._load_tool_configs(file_paths) if file_paths else ([], None)
+        
+        logger.debug(f"ToolFactory.__init__ completed with {len(self._tool_configs)} tool configs loaded")
 
-    def create_tool_specs(self, tool_configs: List[ToolConfig]) -> List[ToolSpecCreationResult]:
+    def create_tool_specs(self) -> Tuple[Optional[ToolDiscoveryResult], List[ToolSpecCreationResult]]:
         """
-        Create tool specifications from a list of tool configurations.
+        Create tool specifications from loaded configurations.
         
-        Processes multiple tool configurations to create tool specifications using
-        the appropriate adapters. This is the main entry point for bulk tool
-        specification creation, handling configuration validation, adapter selection,
-        and comprehensive error reporting.
-        
-        The method:
-        1. Filters out disabled tool configurations
-        2. Routes each configuration to the appropriate adapter
-        3. Collects and aggregates creation results
-        4. Provides detailed logging for debugging and monitoring
-        
-        Args:
-            tool_configs: List of validated tool configuration dictionaries
-            
         Returns:
-            List[ToolSpecCreationResult]: Results from each tool spec creation attempt,
-            including both successful and failed creations. Each result contains:
-            - tool_spec: Successfully created tool specification (or None)
-            - requested_functions: Functions that were requested
-            - error: Error message if creation failed
-            
-        Example:
-            Processing multiple tool configurations::
-            
-                configs = [
-                    {"id": "calc", "type": "python", "module_path": "calculator"},
-                    {"id": "web", "type": "mcp", "command": "web-server", "args": []}
-                ]
-                
-                results = factory.create_tool_specs(configs)
-                
-                for result in results:
-                    if result.error:
-                        print(f"Failed: {result.error}")
-                    else:
-                        print(f"Created tool spec: {result.tool_spec['type']}")
-                        
-        Note:
-            Configurations marked with "disabled": true are automatically
-            skipped with appropriate logging. This allows temporarily
-            disabling tools without removing their configurations.
+            Tuple containing:
+            - ToolDiscoveryResult: Discovery statistics (None if no configs)
+            - List[ToolSpecCreationResult]: Results from each tool spec creation attempt
         """
+        logger.debug(f"create_tool_specs called with {len(self._tool_configs)} tool configs")
+        
+        if not self._tool_configs:
+            logger.debug("create_tool_specs returning empty results (no configs)")
+            return (None, [])
+        
         creation_results = []
 
-        for tool_config in tool_configs:
+        for tool_config in self._tool_configs:
             # Skip disabled tools
             if tool_config.get('disabled', False):
                 logger.info(f"Skipping disabled tool: {tool_config.get('id', 'unknown')}")
@@ -171,138 +142,247 @@ class ToolFactory:
                     requested_functions=tool_config.get("functions", []),
                     error=message
                 ))
-                logger.error(message)
+                logger.warning(message)
         
-        return creation_results
+        logger.debug(f"create_tool_specs returning {len(creation_results)} results")
+        return (self._tool_discovery_results, creation_results)
 
     def create_tool_spec_from_config(self, config: Dict[str, Any]) -> ToolSpecCreationResult:
         """
         Create tool specification from a single configuration dictionary.
         
-        Processes a single tool configuration to create a tool specification using
-        the appropriate adapter. This method handles adapter selection,
-        including special logic for MCP transport detection, and delegates
-        the actual tool specification creation to the selected adapter.
-        
-        Tool type selection logic:
-        - "python": Uses PythonToolAdapter directly
-        - "mcp-stdio": Uses MCPStdIOAdapter directly  
-        - "mcp-http": Uses MCPHTTPAdapter directly
-        - "mcp": Auto-detects transport based on "command" vs "url" fields
+        Uses direct dispatch based on tool type.
         
         Args:
-            config: Tool configuration dictionary containing:
-                   - id: Unique identifier for the tool
-                   - type: Tool type ("python", "mcp", "mcp-stdio", "mcp-http")
-                   - Additional fields specific to the tool type
+            config: Tool configuration dictionary
                    
         Returns:
             ToolSpecCreationResult: Detailed result of the tool spec creation process
-            
-        Raises:
-            Exception: Propagated from adapter.create() if tool spec creation fails
-            
-        Example:
-            Creating tool spec from configuration::
-            
-                config = {
-                    "id": "calculator",
-                    "type": "python", 
-                    "module_path": "tools.calculator",
-                    "functions": ["add", "subtract", "multiply"]
-                }
-                
-                result = factory.create_tool_spec_from_config(config)
-                if not result.error:
-                    print(f"Created {result.tool_spec['type']} tool spec")
-                    
-        Note:
-            For MCP configurations with type "mcp", the method automatically
-            detects the appropriate transport based on the presence of "command"
-            (stdio) or "url" (HTTP) fields in the configuration.
         """
         tool_type = config.get("type")
+        tool_id = config.get("id", "unknown")
+        
+        logger.debug(f"create_tool_spec_from_config called for type='{tool_type}', id='{tool_id}'")
 
-        # Special handling for MCP to distinguish between stdio and http
-        if tool_type == "mcp":
-            if "command" in config:
-                tool_type = "mcp-stdio"
-            elif "url" in config:
-                tool_type = "mcp-http"
-            else:
-                logger.error(f"MCP config for '{config.get('id')}' is missing 'url' or 'command'. Cannot connect.")
-                return ToolSpecCreationResult(
-                    tool_spec=None,
-                    requested_functions=config.get("functions", []),
-                    error="MCP config missing 'url' or 'command'"
-                )
-
-        adapter = self._adapters.get(tool_type)
-        if adapter:
-            logger.debug(f"Creating tool spec using {tool_type} adapter for '{config.get('id')}'")
-            return adapter.create(config)
+        # Direct dispatch to tool type handlers
+        if tool_type == "python":
+            result = self._create_python_tool_spec(config)
+        elif tool_type in ("mcp", "mcp-stdio", "mcp-http"):
+            result = self._create_mcp_tool_spec(config)
         else:
-            logger.warning(f"Tool '{config.get('id')}' has unknown type '{tool_type}'. Skipping.")
-            return ToolSpecCreationResult(
+            logger.warning(f"Tool '{tool_id}' has unknown type '{tool_type}'. Skipping.")
+            result = ToolSpecCreationResult(
                 tool_spec=None,
                 requested_functions=config.get("functions", []),
                 error=f"Unknown tool type '{tool_type}'"
             )
+        
+        logger.debug(f"create_tool_spec_from_config returning result for '{tool_id}': error={result.error}")
+        return result
 
-    def load_tool_configs(self, file_paths: List[PathLike]) -> Tuple[List[ToolConfig], ToolDiscoveryResult]:
+    def _create_python_tool_spec(self, config: Dict[str, Any]) -> ToolSpecCreationResult:
+        """Create Python tool specification directly."""
+        tool_id = config.get("id", "unknown-python-tool")
+        logger.debug(f"_create_python_tool_spec called for tool_id='{tool_id}'")
+        
+        # Extract configuration
+        module_path = config.get("module_path")
+        func_names = config.get("functions", [])
+        package_path = config.get("package_path")
+        src_file = config.get("source_file")
+        
+        logger.debug(f"Python tool spec: id={tool_id}, module_path={module_path}, functions={func_names}")
+        
+        # Validate required configuration
+        if not all([tool_id, module_path, func_names, src_file]):
+            error_msg = "Python tool configuration missing required fields"
+            logger.error(f"Python tool '{tool_id}' missing required fields: {config}")
+            return ToolSpecCreationResult(
+                tool_spec=None,
+                requested_functions=func_names,
+                error=error_msg
+            )
+        
+        # Resolve base path for package_path resolution
+        base_path = None
+        if package_path and src_file:
+            base_path = Path(src_file).parent
+            logger.debug(f"Using base path from source file: {base_path}")
+        
+        loaded_tools = []
+        
+        try:
+            loaded_tools = []
+            found_functions = []
+            missing_functions = []
+
+            # Look for the specific function names requested in the config
+            for func_spec in func_names:
+                if not isinstance(func_spec, str):
+                    logger.warning(f"Function spec '{func_spec}' is not a string in tool config '{tool_id}'. Skipping.")
+                    missing_functions.append(str(func_spec))
+                    continue
+
+                try:
+                    logger.debug(f"Attempting to load function '{func_spec}' from module '{module_path}' (package_path '{package_path}')")
+                    tool = import_python_item(module_path, func_spec, package_path, base_path)
+                except (ImportError, AttributeError, FileNotFoundError) as e:
+                    logger.warn(f"Error loading function '{func_spec}' from module '{module_path}' (package_path '{package_path}')): {e}")
+                    missing_functions.append(func_spec)
+                    continue
+
+                # Clean up the tool name to remove path prefixes
+                clean_function_name = func_spec.split('.')[-1]
+                loaded_tools.append(tool)
+                found_functions.append(clean_function_name)
+                logger.debug(f"Successfully loaded callable '{func_spec}' as '{clean_function_name}' from module '{module_path}'")
+
+            logger.info(f"Successfully loaded {len(loaded_tools)} tools from Python module: {tool_id}")
+
+            # Check if any tools were successfully loaded
+            if not loaded_tools:
+                error_msg = f"No tools could be loaded from Python module '{module_path}'"
+                if func_names:
+                    error_msg += f" for functions: {func_names}"
+                logger.error(error_msg)
+                return ToolSpecCreationResult(
+                    tool_spec=None,
+                    requested_functions=func_names,
+                    error=error_msg
+                )
+
+            # Create ToolSpec with loaded tools
+            tool_spec: ToolSpec = {
+                "tools": loaded_tools,
+                "client": None
+            }
+
+            logger.info(f"Successfully created tool spec for {len(loaded_tools)} tools from Python module: {tool_id}")
+            result = ToolSpecCreationResult(
+                tool_spec=tool_spec,
+                requested_functions=func_names,
+                error=None
+            )
+            
+        except Exception as e:
+            error_msg = f"Unexpected error creating Python tool spec for '{tool_id}': {e}"
+            # Warn this execption - no stack trace needed
+            logger.warning(error_msg)
+            result = ToolSpecCreationResult(
+                tool_spec=None,
+                requested_functions=func_names,
+                error=error_msg
+            )
+        
+        logger.debug(f"_create_python_tool_spec returning for '{tool_id}': error={result.error}")
+        return result
+
+    def _create_mcp_tool_spec(self, config: Dict[str, Any]) -> ToolSpecCreationResult:
+        """Create MCP tool specification directly."""
+        server_id = config.get("id", "unknown-mcp-server")
+        functions = config.get("functions", [])
+        
+        logger.debug(f"_create_mcp_tool_spec called for server_id='{server_id}', functions={functions}")
+        
+        # Check MCP dependencies
+        if not _STRANDS_MCP_AVAILABLE:
+            error_msg = "MCP dependencies not installed"
+            logger.warning(error_msg)
+            result = ToolSpecCreationResult(
+                tool_spec=None,
+                requested_functions=functions,
+                error=error_msg
+            )
+            logger.debug(f"_create_mcp_tool_spec returning for '{server_id}': error={result.error}")
+            return result
+        
+        # Auto-detect transport and create transport callable
+        transport_callable = None
+        try:
+            if "command" in config:
+                transport_callable = self._create_stdio_transport(config)
+                logger.debug("Created stdio transport")
+            elif "url" in config:
+                transport_callable = self._create_http_transport(config)
+                logger.debug("Created HTTP transport")
+            else:
+                error_msg = "MCP config must contain either 'command' (stdio) or 'url' (HTTP)"
+                logger.error(error_msg)
+                result = ToolSpecCreationResult(
+                    tool_spec=None,
+                    requested_functions=functions,
+                    error=error_msg
+                )
+                logger.debug(f"_create_mcp_tool_spec returning for '{server_id}': error={result.error}")
+                return result
+        except ImportError as e:
+            error_msg = f"MCP transport dependencies not available: {e}"
+            logger.error(error_msg)
+            result = ToolSpecCreationResult(
+                tool_spec=None,
+                requested_functions=functions,
+                error=error_msg
+            )
+            logger.debug(f"_create_mcp_tool_spec returning for '{server_id}': error={result.error}")
+            return result
+        
+        # Create client and tool spec
+        mcp_client = MCPClient(server_id, transport_callable, functions)
+        tool_spec: ToolSpec = {"client": mcp_client, "tools": None}
+        
+        logger.info(f"Created MCP tool spec for server: {server_id}")
+        result = ToolSpecCreationResult(tool_spec=tool_spec, requested_functions=functions, error=None)
+        
+        logger.debug(f"_create_mcp_tool_spec returning for '{server_id}': error={result.error}")
+        return result
+
+    def _create_stdio_transport(self, config: Dict[str, Any]) -> Callable:
+        """Create stdio transport callable."""
+        logger.debug(f"_create_stdio_transport called with command='{config.get('command')}'")
+        
+        from mcp import StdioServerParameters
+        from mcp.client.stdio import stdio_client
+        
+        # Prepare environment
+        env = os.environ.copy()
+        if 'env' in config:
+            env.update(config['env'])
+            logger.debug(f"Updated environment with {len(config['env'])} variables")
+        
+        params = StdioServerParameters(
+            command=config["command"],
+            args=config.get("args", []),
+            env=env
+        )
+        
+        transport_callable = lambda: stdio_client(params)
+        logger.debug("_create_stdio_transport completed")
+        return transport_callable
+
+    def _create_http_transport(self, config: Dict[str, Any]) -> Callable:
+        """Create HTTP transport callable."""
+        url = config["url"]
+        logger.debug(f"_create_http_transport called with url='{url}'")
+        
+        from mcp.client.streamable_http import streamablehttp_client
+        
+        transport_callable = lambda: streamablehttp_client(url)
+        logger.debug("_create_http_transport completed")
+        return transport_callable
+
+    def _load_tool_configs(self, file_paths: List[PathLike]) -> Tuple[List[ToolConfig], ToolDiscoveryResult]:
         """
         Load tool configurations from configuration files.
         
-        Discovers and loads tool configurations from the specified file paths,
-        validating configuration structure and providing detailed error reporting.
-        This method handles the file discovery and parsing phase of tool loading.
-        
-        The method:
-        1. Processes each provided file path
-        2. Loads and parses JSON/YAML configuration files
-        3. Validates basic configuration structure
-        4. Collects detailed success/failure information
-        5. Returns both successful configurations and discovery results
-        
         Args:
-            file_paths: List of file paths to configuration files. Can include:
-                       - Direct paths to .json or .yaml files
-                       - Directory paths (implementation may scan for configs)
-                       - Empty list to disable tool loading
+            file_paths: List of file paths to configuration files
                        
         Returns:
-            Tuple[List[ToolConfig], ToolDiscoveryResult]: A tuple containing:
-            - List of successfully loaded and validated tool configurations
-            - ToolDiscoveryResult with comprehensive discovery statistics including:
-                * successful_configs: Configurations that loaded successfully
-                * failed_configs: Configurations that failed with error details
-                * total_files_scanned: Total number of files processed
-                
-        Example:
-            Loading configurations from multiple sources::
-            
-                file_paths = [
-                    "/path/to/python-tools.yaml",
-                    "/path/to/mcp-tools.json",
-                    "/path/to/tools-directory/"
-                ]
-                
-                configs, result = factory.load_tool_configs(file_paths)
-                
-                print(f"Loaded {len(configs)} configurations")
-                print(f"Failed: {len(result.failed_configs)}")
-                
-                for failed in result.failed_configs:
-                    print(f"  {failed['file_path']}: {failed['error']}")
-                    
-        Note:
-            The method only validates configuration file structure and required
-            fields. It does not validate that tool specs can actually be created or
-            that referenced modules/servers are available. That validation
-            occurs during tool specification creation.
+            Tuple[List[ToolConfig], ToolDiscoveryResult]: Successfully loaded configs and discovery stats
         """
+        logger.debug(f"_load_tool_configs called with {len(file_paths)} file paths")
+        
         path_list = file_paths or []
-
         successful_configs: List[ToolConfig] = []
         failed_configs: List[Dict[str, Any]] = []
 
@@ -316,7 +396,7 @@ class ToolFactory:
                 # Add source file reference for debugging
                 config_data['source_file'] = str(file_path)
 
-                # Configuration validation is performed by adapters during creation
+                # Configuration validation is performed during creation
                 successful_configs.append(config_data)
                 logger.info(f"Loaded tool config '{config_data.get('id', 'unknown')}' from {file_path}")
 
@@ -327,7 +407,8 @@ class ToolFactory:
                     'error': str(e),
                     'config_data': None
                 })
-                logger.error(f"Error loading tool config '{file_path}': {e}")
+                # Warn this exception - no stack tracing needed
+                logger.warning(f"Error loading tool config '{file_path}': {e}")
 
         discovery_result = ToolDiscoveryResult(
             successful_configs,
@@ -336,24 +417,5 @@ class ToolFactory:
         )
 
         logger.info(f"Tool discovery complete: {len(successful_configs)} successful, {len(failed_configs)} failed from {len(path_list)} files")
+        logger.debug(f"_load_tool_configs returning {len(successful_configs)} successful configs")
         return successful_configs, discovery_result
-
-    # Backward compatibility method
-    def create_tools(self, tool_configs: List[ToolConfig]) -> List[ToolSpecCreationResult]:
-        """
-        Backward compatibility method - creates tool specifications.
-        
-        This method provides backward compatibility with the old interface
-        while actually creating tool specifications instead of tool instances.
-        
-        Args:
-            tool_configs: List of validated tool configuration dictionaries
-            
-        Returns:
-            List[ToolSpecCreationResult]: Results from tool spec creation
-            
-        Note:
-            This method is deprecated. Use create_tool_specs() instead.
-        """
-        logger.warning("create_tools() is deprecated. Use create_tool_specs() instead.")
-        return self.create_tool_specs(tool_configs)

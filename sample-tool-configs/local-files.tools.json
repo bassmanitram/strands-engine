@@ -1,0 +1,8 @@
+{
+  "id": "local-file-lister",
+  "type": "python",
+  "package_path": "../sample-python-tools",
+  "module_path": "local_tools",
+  "functions": ["list_files"],
+  "disabled": false
+}
