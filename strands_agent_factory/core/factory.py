@@ -26,7 +26,7 @@ from strands import Agent
 from strands_agent_factory.core.agent import AgentProxy
 from strands_agent_factory.session.conversation import ConversationManagerFactory
 from strands_agent_factory.adapters.base import load_framework_adapter
-from strands.handlers.callback_handler import PrintingCallbackHandler
+from strands_agent_factory.handlers.callback import ConfigurableCallbackHandler
 from strands.types.content import Messages
 
 from strands_agent_factory.messaging.generator import generate_llm_messages
@@ -71,7 +71,7 @@ class AgentFactory:
         self._agent = None  # strands-agents Agent instance
         self._loaded_tool_specs: List[ToolSpec] = []  # Tools loaded for Agent, not executed by factory
         self._framework_adapter: Optional[FrameworkAdapter] = None
-        self._callback_handler : Optional[PrintingCallbackHandler] = None
+        self._callback_handler = None  # Will be set up in _setup_callback_handler
         self._conversation_manager = None  # strands-agents ConversationManager
         self._exit_stack = ExitStack()  # For resource management
         self._tool_factory: Optional[ToolFactory] = None
@@ -86,11 +86,34 @@ class AgentFactory:
             sessions_home=config.sessions_home
         )
 
-        self._callback_handler = PrintingCallbackHandler()
+        # Set up callback handler based on configuration
+        self._setup_callback_handler()
 
         logger.debug(f"Factory created with config: {config}")
         logger.debug(f"Parsed model string '{config.model}' -> framework='{self._framework_name}', model_id='{self._model_id}'")
         logger.trace("AgentFactory.__init__ completed")
+    
+    def _setup_callback_handler(self) -> None:
+        """
+        Set up the callback handler based on configuration.
+        
+        If callback_handler is provided in config, uses that. Otherwise,
+        creates a ConfigurableCallbackHandler with the configured
+        show_tool_use and response_prefix settings.
+        """
+        logger.trace(f"_setup_callback_handler called with callback_handler={self.config.callback_handler is not None}")
+        
+        if self.config.callback_handler is not None:
+            self._callback_handler = self.config.callback_handler
+            logger.debug("Using provided callback handler from config")
+        else:
+            self._callback_handler = ConfigurableCallbackHandler(
+                show_tool_use=self.config.show_tool_use,
+                response_prefix=self.config.response_prefix
+            )
+            logger.debug(f"Created ConfigurableCallbackHandler with show_tool_use={self.config.show_tool_use}, response_prefix='{self.config.response_prefix}'")
+        
+        logger.trace("_setup_callback_handler completed")
     
     def _parse_model_string(self, model_string: str) -> Tuple[str, str]:
         """
@@ -306,7 +329,7 @@ class AgentFactory:
             )
             logger.debug(f"Agent args prepared: {list(agent_args.keys())}")
 
-            logger.debug(f"Creating WrappedAgent with {len(self._loaded_tool_specs)} tools")
+            logger.debug(f"Creating AgentProxy with {len(self._loaded_tool_specs)} tools")
             proxy_agent = AgentProxy(
                 self._framework_adapter,
                 self._loaded_tool_specs,
@@ -317,7 +340,7 @@ class AgentFactory:
                 conversation_manager=self._conversation_manager,
                 **agent_args
             )
-            logger.debug(f"WrappedAgent created successfully: {type(proxy_agent).__name__}")
+            logger.debug(f"AgentProxy created successfully: {type(proxy_agent).__name__}")
             logger.trace("create_agent completed successfully")
             return proxy_agent
             

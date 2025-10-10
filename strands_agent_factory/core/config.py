@@ -17,7 +17,7 @@ defaults for all optional parameters.
 """
 
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional, Tuple, Literal
+from typing import Any, Callable, Dict, List, Optional, Tuple, Literal
 from pathlib import Path
 
 from .types import PathLike, Message
@@ -72,7 +72,9 @@ class AgentFactoryConfig:
         custom_summarization_prompt: Custom prompt for summarization
         should_truncate_results: Whether to truncate tool results on overflow
         emulate_system_prompt: Use system prompt emulation for compatibility
+        callback_handler: Optional custom callback handler for agent events
         show_tool_use: Whether to show verbose tool execution feedback
+        response_prefix: Optional prefix to display before agent responses
     """
     
     # ========================================================================
@@ -228,13 +230,29 @@ class AgentFactoryConfig:
     """
     
     # ========================================================================
-    # Engine Behavior Options
+    # Callback and Output Configuration
     # ========================================================================
+    
+    callback_handler: Optional[Callable] = None
+    """
+    Optional custom callback handler for agent events.
+    
+    If None, a ConfigurableCallbackHandler will be created using the
+    show_tool_use and response_prefix settings. If provided, this
+    custom handler will be used instead.
+    """
     
     show_tool_use: bool = False
     """
     Whether to show verbose tool execution feedback.
     
     When True, detailed information about tool calls and results
-    is displayed. Useful for debugging and development.
+    is displayed. Only used if callback_handler is None.
+    """
+    
+    response_prefix: Optional[str] = None
+    """
+    Optional prefix to display before agent responses.
+    
+    Example: "Assistant: " or "Bot: ". Only used if callback_handler is None.
     """

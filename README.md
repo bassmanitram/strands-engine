@@ -122,7 +122,11 @@ config = AgentFactoryConfig(
     
     # Session persistence
     session_id="research_session_001",
-    sessions_home=Path("./sessions")
+    sessions_home=Path("./sessions"),
+    
+    # Output customization
+    show_tool_use=True,
+    response_prefix="Assistant: "
 )
 
 factory = AgentFactory(config)
@@ -221,7 +225,9 @@ strands_agent_factory/
 | `custom_summarization_prompt` | `Optional[str]` | Custom prompt for summarization | `None` |
 | `should_truncate_results` | `bool` | Whether to truncate tool results on overflow | `True` |
 | `emulate_system_prompt` | `bool` | Emulate system prompt for unsupported models | `False` |
-| `show_tool_use` | `bool` | Show detailed tool execution | `False` |
+| `callback_handler` | `Optional[Callable]` | Custom callback handler for agent events | `None` |
+| `show_tool_use` | `bool` | Show verbose tool execution feedback | `False` |
+| `response_prefix` | `Optional[str]` | Prefix to display before agent responses | `None` |
 
 ### Model String Formats
 

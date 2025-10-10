@@ -1,118 +1,93 @@
 """
-Callback handler implementation for strands_agent_factory.
+Custom callback handler for strands_agent_factory.
 
-This module provides the EngineCallbackHandler class, which extends the
-strands-agents PrintingCallbackHandler to provide customized output handling
-for strands_agent_factory applications. The handler manages agent output display
-without requiring prompt_toolkit dependencies.
-
-The callback handler provides:
-- Clean agent response display with proper formatting
-- Optional tool usage information display
-- Event-driven output handling for streaming responses
-- Graceful handling of reasoning text and tool execution feedback
-
-The handler is designed to work seamlessly with strands_agent_factory's streaming
-capabilities while providing clear, formatted output for end users.
+This module provides a configurable callback handler that controls output verbosity
+and tool execution feedback for strands-agents Agent instances.
 """
 
+import os
 from typing import Any, Optional
+
 from loguru import logger
-from strands.handlers.callback_handler import PrintingCallbackHandler
+
+from strands_agent_factory.core.utils import print_structured_data
 
 
-class EngineCallbackHandler(PrintingCallbackHandler):
+class ConfigurableCallbackHandler:
     """
-    Customized callback handler for strands_agent_factory output management.
+    Configurable callback handler for controlling agent output verbosity.
+
+    This handler provides configurable control over tool execution feedback:
+    - When show_tool_use=False (default): Suppresses verbose tool execution details
+    - When show_tool_use=True: Shows full tool execution feedback with structured formatting
     
-    EngineCallbackHandler extends the standard PrintingCallbackHandler to
-    provide enhanced output formatting and optional tool usage display for
-    strands_agent_factory applications. It handles the complexity of streaming
-    agent responses while maintaining clean, user-friendly output.
-    
-    The handler manages:
-    - Message content display with proper formatting
-    - Optional tool execution information display
-    - Event-driven output handling for streaming responses
-    - Reasoning text display for models that support it
-    - Clean completion handling with appropriate line breaks
-    
-    Key features:
-    - No prompt_toolkit dependencies (lightweight)
-    - Configurable tool usage display
-    - Event-based output state management  
-    - Proper handling of streaming vs. complete responses
-    - Integration with strands-agents callback system
-    
-    Attributes:
-        show_tool_use: Whether to display tool usage information
-        in_message: Current message display state
-        in_tool_use: Current tool usage display state
-        tool_count: Running count of tools used in conversation
-        previous_tool_use: Most recent tool usage information
-        
-    Example:
-        Basic usage::
-        
-            handler = EngineCallbackHandler(show_tool_use=True)
-            agent = Agent(model=model, callback_handler=handler)
-            
-        With custom configuration::
-        
-            handler = EngineCallbackHandler(show_tool_use=False)
-            # Handler will show responses but not tool usage details
+    Also handles:
+    - Response prefix printing in interactive mode
+    - Final newline after responses
+    - Tool input formatting with optional truncation
     """
 
-    def __init__(self, show_tool_use: Optional[bool] = False):
+    def __init__(self, 
+                 show_tool_use: Optional[bool] = False,
+                 response_prefix: Optional[str] = None,
+                 max_line_length: Optional[int] = None):
         """
-        Initialize the callback handler with display options.
-        
-        Creates an EngineCallbackHandler with configurable output behavior.
-        The handler extends PrintingCallbackHandler while adding tool usage
-        display capabilities and enhanced state management.
-        
+        Initialize the callback handler.
+
         Args:
-            show_tool_use: Whether to display detailed tool usage information.
-                          When True, shows tool names and execution counts.
-                          When False, only shows agent responses. (default: False)
+            show_tool_use: Whether to show verbose tool execution feedback (default: False)
+            response_prefix: Optional prefix to print before responses (default: None)
+            max_line_length: Maximum line length for tool input display (default: None)
         """
+        logger.trace(f"ConfigurableCallbackHandler.__init__ called with show_tool_use={show_tool_use}, response_prefix='{response_prefix}', max_line_length={max_line_length}")
+        
         super().__init__()
         self.show_tool_use = show_tool_use
         self.in_message = False
         self.in_tool_use = False
+        self.max_line_length = max_line_length
+        self.response_prefix = response_prefix
+        
+        # Initialize tool tracking
         self.tool_count = 0
         self.previous_tool_use = None
+        
+        # Check env var once at startup for efficiency
+        self.disable_truncation = os.environ.get('SHOW_FULL_TOOL_INPUT', 'false').lower() == 'true'
+        
+        logger.trace("ConfigurableCallbackHandler.__init__ completed")
+
+    def _format_and_print_tool_input(self, tool_name: str, tool_input: Any):
+        """
+        Format and print tool input with structured formatting.
+        
+        Args:
+            tool_name: Name of the tool being called
+            tool_input: Input parameters for the tool
+        """
+        logger.trace(f"_format_and_print_tool_input called with tool_name='{tool_name}', input_type={type(tool_input).__name__}")
+        
+        print(f"\nTool #{self.tool_count}: {tool_name}")
+        print_structured_data(
+            tool_input, 
+            1, 
+            -1 if self.disable_truncation else self.max_line_length, 
+            printer=print
+        )
+        
+        logger.trace("_format_and_print_tool_input completed")
 
     def __call__(self, **kwargs: Any) -> None:
         """
-        Handle agent output events and format display accordingly.
-        
-        This is the main callback method that processes events from the
-        strands-agents streaming system. It handles different types of
-        output events including message content, tool usage, reasoning
-        text, and completion signals.
-        
-        The method processes several event types:
-        - Message content: Regular agent response text
-        - Tool usage: Information about tool calls and execution
-        - Reasoning text: Model reasoning/thinking display
-        - Completion events: End-of-message or end-of-response signals
-        
+        Handle callback events from the agent to control terminal output.
+
+        Processes various agent events including message content, tool usage,
+        and completion signals to provide appropriate user feedback.
+
         Args:
-            **kwargs: Event data from strands-agents callback system
-                     Common keys include:
-                     - event: Event type information
-                     - reasoningText: Model reasoning content
-                     - data: Response content data
-                     - complete: Whether response is complete
-                     - current_tool_use: Current tool usage information
-                     
-        Note:
-            This method is called automatically by the strands-agents
-            streaming system. It should not be called directly by
-            application code.
+            **kwargs: Event data from the agent containing event type, data, and metadata
         """
-        logger.trace("EngineCallbackHandler.__call__ arguments: {}", kwargs)
+        logger.trace(f"ConfigurableCallbackHandler.__call__ called with kwargs keys: {list(kwargs.keys())}")
 
         event = kwargs.get("event", {})
         reasoningText = kwargs.get("reasoningText", False)
@@ -120,20 +95,26 @@ class EngineCallbackHandler(PrintingCallbackHandler):
         complete = kwargs.get("complete", False)
         current_tool_use = kwargs.get("current_tool_use", {})
 
+        # Handle response prefix in interactive mode
+        if data and not self.in_message:
+            self.in_message = True
+            if self.response_prefix:
+                print(self.response_prefix, end="", flush=True)
+
         # Handle message completion
         if "messageStop" in event and self.in_message:
             self.in_message = False
-            print(flush=True)
+            print(flush=True)  # Print the final newline
 
-        # Display reasoning text (for models that support it)
+        # Print reasoning text
         if reasoningText:
             print(reasoningText, end="")
 
-        # Display response content
+        # Print response data
         if data:
             print(data, end="" if not complete else "\n")
 
-        # Handle tool use display if enabled
+        # Handle tool usage display based on configuration
         if self.show_tool_use:
             if current_tool_use:
                 if not self.in_tool_use:
@@ -143,10 +124,15 @@ class EngineCallbackHandler(PrintingCallbackHandler):
 
             if "messageStop" in event and self.in_tool_use:
                 if self.previous_tool_use:
-                    print(f"\nTool #{self.tool_count}: {self.previous_tool_use.get('name', 'Unknown')}")
+                    self._format_and_print_tool_input(
+                        tool_name=self.previous_tool_use.get("name", "Unknown tool"),
+                        tool_input=self.previous_tool_use.get("input", {})
+                    )
                     self.previous_tool_use = None
                 self.in_tool_use = False
 
-        # Handle completion formatting
+        # Handle completion
         if complete and data:
             print("\n")
+        
+        logger.trace("ConfigurableCallbackHandler.__call__ completed")
