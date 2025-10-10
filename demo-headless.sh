@@ -23,6 +23,11 @@ echo
 #
 export BYPASS_TOOL_CONSENT=true
 
+#
+# Gets noisy is not
+#
+export LOGURU_LEVEL=ERROR
+
 # Run chatbot and filter out terminal escape sequences and aiohttp warnings
 python3 "$SCRIPT_DIR/chatbot.py" "$MODEL" 2>/dev/null << 'EOF' | sed $'s/\033\[[0-9;]*[a-zA-Z]//g' | sed 's/[;][0-9]*R//g'
 What's my current working directory?

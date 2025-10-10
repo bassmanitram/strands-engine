@@ -34,7 +34,8 @@ class AgenticChatbot:
 - NEVER modify the users file system
 
 Engage naturally in conversation while leveraging your tools when appropriate.""",
-            tool_config_paths=tool_config_paths
+            tool_config_paths=tool_config_paths,
+            response_prefix="🤖 Assistant: "
         )
         
         self.factory = None
@@ -78,13 +79,9 @@ Engage naturally in conversation while leveraging your tools when appropriate.""
                     continue
 
                 # Process the message with the agent
-                print("🤖 Assistant: ", end="", flush=True)
-                
-                # Invoke agent - the agents own infrasturcture handles the responses
+                # The response_prefix will be handled by the callback handler
                 await self.agent.send_message_to_agent(user_input)
 
-                print("\n")
-                                
             except (KeyboardInterrupt, EOFError):
                 print("\n👋 Goodbye!")
                 break
