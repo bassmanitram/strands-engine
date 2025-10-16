@@ -261,36 +261,3 @@ class BedrockAdapter(FrameworkAdapter):
 
         logger.trace(f"Content adaptation completed, returning {len(transformed_messages)} messages")
         return transformed_messages
-
-    def adapt_tools(self, tools: List[Tool], model_string: str) -> List[Tool]:
-        """
-        Adapt tools for Bedrock compatibility.
-        
-        AWS Bedrock generally supports standard tool schemas with the underlying
-        model providers handling the specifics. This method performs minimal
-        adaptation but provides an extension point for Bedrock-specific
-        tool optimizations if needed.
-        
-        Args:
-            tools: List of tool objects to adapt
-            model_string: Model string for potential model-specific adaptations
-            
-        Returns:
-            List[Tool]: Tools adapted for Bedrock (unchanged by default)
-            
-        Note:
-            Bedrock delegates tool handling to the underlying model providers
-            (Anthropic, Amazon, etc.), so tool schemas typically don't require
-            Bedrock-specific modifications. This method provides a hook for
-            future Bedrock-specific tool adaptations if they become necessary.
-        """
-        logger.trace(f"BedrockAdapter.adapt_tools called with {len(tools) if tools else 0} tools, model_string='{model_string}'")
-        
-        # Bedrock generally supports standard tool schemas via underlying providers
-        if tools:
-            logger.debug("Bedrock adapter: Tools passed through without modification")
-        else:
-            logger.debug("No tools to adapt")
-        
-        logger.trace(f"Tool adaptation completed, returning {len(tools) if tools else 0} tools")
-        return tools

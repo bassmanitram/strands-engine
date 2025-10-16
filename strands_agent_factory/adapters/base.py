@@ -7,19 +7,31 @@ and frameworks. Framework adapters handle the specifics of model loading,
 tool adaptation, and provider-specific configuration.
 
 The adapter system allows strands_agent_factory to support multiple AI frameworks
-(OpenAI, Anthropic, Ollama, Bedrock, etc.) through a common interface while
-handling the unique requirements of each provider.
+through a common interface while handling the unique requirements of each provider.
+It now features automatic support for standard frameworks through a fully dynamic
+generic adapter system.
 
 Components:
     - FrameworkAdapter: Abstract base class defining the adapter interface
-    - load_framework_adapter: Factory function for loading specific adapters
-    - FRAMEWORK_HANDLERS: Registry mapping framework names to adapter classes
+    - load_framework_adapter: Factory function with 3-tier loading strategy
+    - FRAMEWORK_HANDLERS: Registry for frameworks requiring special handling
+    - Generic adapter support for automatic framework handling
+
+Loading Strategy:
+    1. Explicit adapters (priority): Custom implementations for special cases
+    2. Generic adapters (automatic): Standard strands-agents providers
+    3. Graceful failure: Clear error reporting
 
 The adapters follow a consistent pattern for:
     - Model loading and configuration
     - Tool schema adaptation for provider compatibility
     - Message formatting and system prompt handling
     - Provider-specific initialization and cleanup
+
+Generic Adapter System:
+    The system now includes automatic support for strands-agents providers
+    that follow standard patterns, significantly reducing maintenance overhead
+    while providing unlimited framework support.
 """
 
 from abc import ABC, abstractmethod
@@ -38,17 +50,27 @@ import importlib
 
 FRAMEWORK_HANDLERS = {
     "litellm": "strands_agent_factory.adapters.litellm.LiteLLMAdapter",
-    "openai":  "strands_agent_factory.adapters.openai.OpenAIAdapter",
-    "anthropic": "strands_agent_factory.adapters.anthropic.AnthropicAdapter",
     "bedrock": "strands_agent_factory.adapters.bedrock.BedrockAdapter",
     "ollama": "strands_agent_factory.adapters.ollama.OllamaAdapter"
 }
 """
-Registry mapping framework names to their adapter class paths.
+Registry mapping framework names to their explicit adapter class paths.
 
-This registry enables dynamic loading of framework adapters based on
-model string prefixes or explicit framework selection. Each entry
-maps a framework identifier to its fully qualified class path.
+This registry contains frameworks that require custom adapter implementations
+due to special requirements:
+- litellm: Complex tool schema cleaning for multi-provider compatibility
+- bedrock: BotocoreConfig handling + content adaptation + image validation
+- ollama: Non-standard constructor with positional host parameter
+
+Frameworks not in this registry (openai, anthropic, gemini, mistral, etc.)
+are automatically handled by the generic adapter system if they follow
+standard strands-agents patterns.
+
+The generic adapter provides automatic support for any framework following
+standard conventions:
+- Module: strands.models.{framework}.{Framework}Model
+- Constructor: __init__(self, *, client_args=None, **model_config)
+- Config: TypedDict with model_id property
 """
 
 
@@ -94,7 +116,7 @@ class FrameworkAdapter(ABC):
         Get the name of this framework.
         
         Returns:
-            str: Framework identifier (e.g., 'litellm', 'anthropic', 'ollama')
+            str: Framework identifier (e.g., 'litellm', 'bedrock', 'ollama')
             
         Note:
             This name is used for logging, debugging, and framework selection.
@@ -102,34 +124,36 @@ class FrameworkAdapter(ABC):
         """
         pass
 
-    @abstractmethod
+
     def adapt_tools(self, tools: List[Tool], model_string: str) -> List[Tool]:
         """
-        Adapt tools for the specific framework.
-        
-        Different frameworks may require different tool formats, schema
-        modifications, or capability filtering. This method handles those
-        transformations while preserving tool functionality.
-        
-        Common adaptations include:
-        - Removing unsupported schema properties
-        - Converting between different tool specification formats
-        - Filtering tools based on model capabilities
-        - Adding framework-specific metadata
+        Adapt tools for default compatibility.
         
         Args:
-            tools: List of tool objects loaded by the factory
-            model_string: Model string to determine adaptations needed
+            tools: List of tool objects to adapt
+            model_string: Model string for potential model-specific adaptations
             
         Returns:
-            List[Tool]: List of framework-adapted tool objects
+            List[Tool]: Adapted Tools (unchanged by default)
             
         Note:
-            Tools are loaded by the factory but executed by strands-agents.
-            This method only modifies tool metadata and schemas.
+            Tool support varies significantly across different models.
+            Some models may not support function calling at all, while others
+            may have specific requirements for tool schemas. This method
+            provides an extension point for model-specific adaptations.
         """
-        pass
-
+        logger.trace(f"FrameworkAdapter.adapt_tools called with {len(tools) if tools else 0} tools, model_string='{model_string}'")
+        
+        # FrameworkAdapter tool support varies by model - for now, pass through unchanged
+        if tools:
+            logger.debug("FrameworkAdapter adapter: Tools passed through without modification")
+            logger.debug(f"Note: Tool support varies across models. Model '{model_string}' may have limited tool capabilities.")
+        else:
+            logger.debug("No tools to adapt")
+        
+        logger.trace(f"Tool adaptation completed, returning {len(tools) if tools else 0} tools")
+        return tools
+    
     def prepare_agent_args(
         self,
         system_prompt: Optional[str] = None,
@@ -274,48 +298,168 @@ class FrameworkAdapter(ABC):
 
 
 # ============================================================================
-# Framework Adapter Factory
+# Framework Adapter Factory with Generic Support
 # ============================================================================
 
 def load_framework_adapter(adapter_name: str) -> Optional[FrameworkAdapter]:
     """
-    Load a framework adapter by name.
+    Load a framework adapter by name with automatic generic fallback.
     
-    Factory function that dynamically loads and instantiates framework
-    adapters based on their registered names. Handles the complexity of
-    module importing and class instantiation.
+    Enhanced factory function that dynamically loads framework adapters
+    with support for automatic generic handling of standard strands-agents
+    providers. The loading strategy is:
+    
+    1. **Explicit adapters** (highest priority): Use custom implementations
+       from FRAMEWORK_HANDLERS for frameworks requiring special handling
+    2. **Generic adapters** (automatic): Use generic implementation for
+       frameworks following standard strands-agents patterns
+    3. **Graceful failure**: Return None if no suitable adapter can be created
+    
+    This approach significantly reduces maintenance overhead while providing
+    broader framework support and maintaining compatibility for special cases.
     
     Args:
-        adapter_name: Name of the adapter to load (must be in FRAMEWORK_HANDLERS)
+        adapter_name: Name of the framework adapter to load
         
     Returns:
         Optional[FrameworkAdapter]: Instantiated adapter, or None if loading fails
         
-    Raises:
-        ImportError: If the adapter module cannot be imported
-        AttributeError: If the adapter class is not found in the module
-        
     Example:
-        >>> adapter = load_framework_adapter("openai")
-        >>> print(adapter.framework_name)
-        "openai"
+        Explicit adapter (custom implementation)::
         
+            >>> adapter = load_framework_adapter("bedrock")  # Uses BedrockAdapter
+            >>> adapter.framework_name
+            "bedrock"
+            
+        Generic adapter (automatic support)::
+        
+            >>> adapter = load_framework_adapter("openai")   # Uses GenericFrameworkAdapter
+            >>> adapter.framework_name
+            "openai"
+            
+        Unsupported framework::
+        
+            >>> adapter = load_framework_adapter("nonexistent")
+            >>> adapter is None
+            True
+            
     Note:
-        The function uses dynamic importing to avoid loading all framework
-        dependencies unless they are actually needed.
+        The function uses lazy importing to avoid loading framework
+        dependencies unless they are actually needed. Generic adapters
+        are only created if the framework follows standard patterns and
+        has required dependencies available.
     """
     logger.trace(f"load_framework_adapter called with adapter_name: '{adapter_name}'")
     
-    class_path = FRAMEWORK_HANDLERS.get(adapter_name)
-    if class_path:
-        logger.debug(f"Found adapter class path: {class_path}")
+    if not adapter_name:
+        logger.error("Empty adapter_name provided")
+        return None
+    
+    # 1. Try explicit adapter first (highest priority)
+    if adapter_name in FRAMEWORK_HANDLERS:
+        logger.debug(f"Using explicit adapter for {adapter_name}")
+        return _load_explicit_adapter(adapter_name)
+    
+    # 2. Try generic adapter (automatic support)
+    logger.debug(f"Checking generic adapter support for {adapter_name}")
+    if _can_handle_generically(adapter_name):
+        logger.debug(f"Using generic adapter for {adapter_name}")
+        return _create_generic_adapter(adapter_name)
+    
+    # 3. No suitable adapter found
+    logger.error(f"No adapter available for framework: {adapter_name}")
+    return None
+
+
+def _load_explicit_adapter(adapter_name: str) -> Optional[FrameworkAdapter]:
+    """
+    Load an explicit adapter from the FRAMEWORK_HANDLERS registry.
+    
+    Args:
+        adapter_name: Framework name to load
+        
+    Returns:
+        Instantiated explicit adapter or None if loading fails
+    """
+    try:
+        class_path = FRAMEWORK_HANDLERS[adapter_name]
+        logger.debug(f"Found explicit adapter class path: {class_path}")
+        
         module_path, class_name = class_path.rsplit('.', 1)
         logger.debug(f"Importing module: {module_path}, class: {class_name}")
+        
         module = importlib.import_module(module_path)
         adapter_class = getattr(module, class_name)
         adapter = adapter_class()
-        logger.debug(f"Successfully created adapter: {type(adapter).__name__}")
+        
+        logger.debug(f"Successfully created explicit adapter: {type(adapter).__name__}")
         return adapter
-    else:
-        logger.error(f"No adapter found for: {adapter_name}")
+        
+    except Exception as e:
+        logger.error(f"Failed to load explicit adapter for {adapter_name}: {e}")
         return None
+
+
+def _can_handle_generically(framework_id: str) -> bool:
+    """
+    Check if a framework can be handled by the generic adapter.
+    
+    This is a wrapper around the generic adapter's validation function
+    to avoid importing the generic module unless needed.
+    
+    Args:
+        framework_id: Framework identifier to check
+        
+    Returns:
+        True if the framework can be handled generically
+    """
+    try:
+        # Lazy import to avoid loading generic adapter unless needed
+        from .generic import can_handle_generically
+        return can_handle_generically(framework_id)
+    except ImportError as e:
+        logger.error(f"Generic adapter module not available: {e}")
+        return False
+    except Exception as e:
+        logger.debug(f"Generic adapter validation failed for {framework_id}: {e}")
+        return False
+
+
+def _create_generic_adapter(framework_id: str) -> Optional[FrameworkAdapter]:
+    """
+    Create a generic adapter for a framework.
+    
+    Args:
+        framework_id: Framework identifier
+        
+    Returns:
+        Generic adapter instance or None if creation fails
+    """
+    try:
+        # Lazy import to avoid loading generic adapter unless needed
+        from .generic import create_generic_adapter
+        return create_generic_adapter(framework_id)
+    except ImportError as e:
+        logger.error(f"Generic adapter module not available: {e}")
+        return None
+    except Exception as e:
+        logger.error(f"Failed to create generic adapter for {framework_id}: {e}")
+        return None
+
+
+# Legacy function for backward compatibility
+def load_explicit_adapter(adapter_name: str) -> Optional[FrameworkAdapter]:
+    """
+    Load an explicit adapter (legacy function for backward compatibility).
+    
+    Args:
+        adapter_name: Framework name to load
+        
+    Returns:
+        Instantiated adapter or None if loading fails
+        
+    Note:
+        This function is deprecated. Use load_framework_adapter() instead.
+    """
+    logger.warning("load_explicit_adapter() is deprecated, use load_framework_adapter() instead")
+    return _load_explicit_adapter(adapter_name)

@@ -170,37 +170,3 @@ class OllamaAdapter(FrameworkAdapter):
         
         logger.debug(f"OllamaModel created successfully: {type(model).__name__}")
         return model
-
-    def adapt_tools(self, tools: List[Tool], model_string: str) -> List[Tool]:
-        """
-        Adapt tools for Ollama compatibility.
-        
-        Many Ollama models have varying levels of tool support, and some may
-        require specific formatting or limitations. This method provides a
-        place to handle Ollama-specific tool adaptations, though the default
-        implementation passes tools through unchanged.
-        
-        Args:
-            tools: List of tool objects to adapt
-            model_string: Model string for potential model-specific adaptations
-            
-        Returns:
-            List[Tool]: Tools adapted for Ollama (unchanged by default)
-            
-        Note:
-            Tool support varies significantly across different Ollama models.
-            Some models may not support function calling at all, while others
-            may have specific requirements for tool schemas. This method
-            provides an extension point for model-specific adaptations.
-        """
-        logger.trace(f"OllamaAdapter.adapt_tools called with {len(tools) if tools else 0} tools, model_string='{model_string}'")
-        
-        # Ollama tool support varies by model - for now, pass through unchanged
-        if tools:
-            logger.debug("Ollama adapter: Tools passed through without modification")
-            logger.debug(f"Note: Tool support varies across Ollama models. Model '{model_string}' may have limited tool capabilities.")
-        else:
-            logger.debug("No tools to adapt")
-        
-        logger.trace(f"Tool adaptation completed, returning {len(tools) if tools else 0} tools")
-        return tools
