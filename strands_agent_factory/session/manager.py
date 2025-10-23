@@ -17,8 +17,10 @@ requiring agent reconfiguration, making it ideal for multi-user or
 multi-conversation scenarios.
 """
 
+import time
 from typing import Optional, List, Any
 from pathlib import Path
+import uuid
 from loguru import logger
 import shutil
 
@@ -144,11 +146,20 @@ class DelegatingSession(SessionManager):
                 # Clear any existing session data and start fresh
                 session_path = Path(self._sessions_home) / f"session_{session_name}"
                 if session_path.exists():
-                    logger.debug("Backing up incompatible session data to {}.backup", session_path)
-                    backup_path = Path(str(session_path) + ".backup")
-                    if backup_path.exists():
-                        shutil.rmtree(backup_path)
-                    session_path.rename(backup_path)
+                    # Create unique backup name to avoid conflicts
+                    timestamp = int(time.time())
+                    unique_id = str(uuid.uuid4())[:8]
+                    backup_path = Path(str(session_path) + f".backup.{timestamp}.{unique_id}")
+                    
+                    logger.debug("Backing up incompatible session data to {}", backup_path)
+                    
+                    try:
+                        # Atomic rename - either succeeds completely or fails completely
+                        session_path.rename(backup_path)
+                        logger.info("Session backup created: {}", backup_path)
+                    except OSError as e:
+                        logger.warning("Failed to create session backup: {}", e)
+                        # Continue anyway - we'll create a fresh session
 
                 # Create a fresh session
                 new_session = FileSessionManager(session_id=session_name, storage_dir=str(self._sessions_home))

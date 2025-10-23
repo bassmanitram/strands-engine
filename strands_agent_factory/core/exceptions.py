@@ -39,3 +39,79 @@ class SessionError(FactoryError):
 class InitializationError(FactoryError):
     """Factory initialization failed."""
     pass
+
+
+# ============================================================================
+# Specific Adapter Exceptions (for replacing broad Exception catching)
+# ============================================================================
+
+class FrameworkNotSupportedError(AdapterError):
+    """Framework is not supported or dependencies are missing."""
+    pass
+
+
+class ModelClassNotFoundError(AdapterError):
+    """Expected model class not found in framework module."""
+    pass
+
+
+class ModelPropertyDetectionError(AdapterError):
+    """Could not detect model configuration property."""
+    pass
+
+
+class GenericAdapterCreationError(AdapterError):
+    """Generic adapter creation failed."""
+    pass
+
+
+# ============================================================================
+# Content Processing Exceptions
+# ============================================================================
+
+class ContentProcessingError(FactoryError):
+    """Base exception for content processing operations."""
+    pass
+
+
+class FileFormatError(ContentProcessingError):
+    """File format is not supported or invalid."""
+    pass
+
+
+class FileAccessError(ContentProcessingError):
+    """File cannot be accessed or read."""
+    pass
+
+
+# ============================================================================
+# Session Management Exceptions  
+# ============================================================================
+
+class SessionBackupError(SessionError):
+    """Session backup operation failed."""
+    pass
+
+
+class SessionActivationError(SessionError):
+    """Session activation failed."""
+    pass
+
+
+# ============================================================================
+# Validation Exceptions
+# ============================================================================
+
+class ValidationError(FactoryError):
+    """Input validation failed."""
+    pass
+
+
+class ModelStringFormatError(ValidationError):
+    """Model string format is invalid."""
+    pass
+
+
+class PathValidationError(ValidationError):
+    """Path validation failed."""
+    pass

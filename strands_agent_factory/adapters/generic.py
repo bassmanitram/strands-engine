@@ -27,6 +27,12 @@ from loguru import logger
 from strands.models import Model
 
 from strands_agent_factory.adapters.base import FrameworkAdapter
+from strands_agent_factory.core.exceptions import (
+    FrameworkNotSupportedError,
+    ModelClassNotFoundError,
+    ModelPropertyDetectionError,
+    GenericAdapterCreationError
+)
 
 
 class GenericFrameworkAdapter(FrameworkAdapter):
@@ -60,8 +66,8 @@ class GenericFrameworkAdapter(FrameworkAdapter):
             framework_id: Framework identifier (e.g., "gemini", "anthropic")
             
         Raises:
-            ImportError: If the framework's strands support is not installed
-            AttributeError: If the model class cannot be found
+            FrameworkNotSupportedError: If the framework's strands support is not installed
+            ModelClassNotFoundError: If the model class cannot be found
         """
         self._framework_id = framework_id
         self._model_class = None
@@ -133,11 +139,10 @@ class GenericFrameworkAdapter(FrameworkAdapter):
             The imported model class
             
         Raises:
-            ImportError: If the module cannot be imported
-            AttributeError: If the class cannot be found in the module
+            FrameworkNotSupportedError: If the module cannot be imported
+            ModelClassNotFoundError: If the class cannot be found in the module
         """
         module_path, class_names = self._derive_import_paths()
-        last_exception = None
         
         try:
             logger.debug("Importing from {}", module_path)
@@ -150,17 +155,15 @@ class GenericFrameworkAdapter(FrameworkAdapter):
                     logger.debug("Successfully imported: {} as {}", class_name, self._model_class)
                     return self._model_class
             
-            # If no class found, raise error
-            raise AttributeError(f"None of the expected classes {class_names} found in {module_path}")
+            # If no class found, raise specific error
+            raise ModelClassNotFoundError(f"None of the expected classes {class_names} found in {module_path}")
                 
-        except ImportError as e:
+        except (ImportError, ModuleNotFoundError) as e:
             logger.debug("Failed to import module {}: {}", module_path, e)
-            last_exception = e
-            raise ImportError(f"Could not import {module_path}. Framework {self._framework_id} may not be supported in strands.models or dependencies missing") from e
+            raise FrameworkNotSupportedError(f"Framework {self._framework_id} not supported - could not import {module_path}") from e
         except AttributeError as e:
             logger.debug("Failed to find classes {} in {}: {}", class_names, module_path, e)
-            last_exception = e
-            raise AttributeError(f"None of the expected classes {class_names} found in {module_path}") from e
+            raise ModelClassNotFoundError(f"Model class not found for framework {self._framework_id}") from e
     
     def _detect_model_property(self, model_class) -> str:
         """
@@ -272,9 +275,75 @@ class GenericFrameworkAdapter(FrameworkAdapter):
             raise RuntimeError(f"Failed to create {self._model_class.__name__} with config {model_config}") from e
 
 
+    @staticmethod
+    def _validate_framework_import(framework_id: str) -> tuple[bool, Optional[type]]:
+        """
+        Validate framework import without creating adapter instance.
+        
+        Returns:
+            Tuple of (is_valid, model_class_or_none)
+        """
+        try:
+            module_path = f"strands.models.{framework_id}"
+            module = importlib.import_module(module_path)
+            
+            # Generate possible class names
+            class_names = [f"{framework_id.capitalize()}Model"]
+            if 'cpp' in framework_id:
+                parts = framework_id.split('cpp')
+                if len(parts) == 2:
+                    camel_case = f"{parts[0].capitalize()}Cpp{parts[1].capitalize()}Model"
+                    class_names.append(camel_case)
+            
+            # Try each possible class name
+            for class_name in class_names:
+                if hasattr(module, class_name):
+                    model_class = getattr(module, class_name)
+                    if issubclass(model_class, Model):
+                        return True, model_class
+            
+            return False, None
+            
+        except (ImportError, ModuleNotFoundError, AttributeError):
+            # Expected errors during validation - return False
+            return False, None
+        except Exception as e:
+            # Unexpected errors - log but still return False for validation
+            logger.debug("Unexpected error during framework validation for {}: {}", framework_id, e)
+            return False, None
+
+    @staticmethod
+    def _validate_model_property(model_class: type) -> bool:
+        """Validate that model class has detectable model property."""
+        COMMON_MODEL_PROPERTIES = ["model_id", "model", "model_name", "name"]
+        
+        try:
+            # Check annotations
+            if hasattr(model_class, '__annotations__'):
+                for prop_name in COMMON_MODEL_PROPERTIES:
+                    if prop_name in model_class.__annotations__:
+                        return True
+            
+            # Check config class annotations
+            for attr_name in dir(model_class):
+                if attr_name.endswith('Config') and not attr_name.startswith('_'):
+                    config_class = getattr(model_class, attr_name)
+                    if hasattr(config_class, '__annotations__'):
+                        for prop_name in COMMON_MODEL_PROPERTIES:
+                            if prop_name in config_class.__annotations__:
+                                return True
+            
+            return True  # Default to True if we can't detect
+            
+        except Exception as e:
+            # Log unexpected errors but default to True for validation
+            logger.debug("Unexpected error during model property validation: {}", e)
+            return True
+
+
 def can_handle_generically(framework_id: str) -> bool:
     """
-    Check if a framework can be handled by the dynamic generic adapter.
+    Optimized validation without creating full adapter instance.
     
     Uses pure import-based validation - if the strands model class can be
     imported successfully, the framework is fully supported with all dependencies.
@@ -306,33 +375,19 @@ def can_handle_generically(framework_id: str) -> bool:
         logger.debug("Framework {} requires custom adapter", framework_id)
         return False
     
-    try:
-        # Create a test adapter to validate dynamic discovery
-        test_adapter = GenericFrameworkAdapter(framework_id)
-        
-        # Try to import the model class - this validates:
-        # 1. Framework follows strands naming conventions
-        # 2. Strands support is installed with all dependencies  
-        # 3. Model class exists and is importable
-        model_class = test_adapter._import_model_class()
-        
-        # Verify it's actually a strands Model
-        if not issubclass(model_class, Model):
-            logger.debug("Class {} is not a strands Model", model_class)
-            return False
-        
-        # Additional validation: check if we can detect model property
-        model_property = test_adapter._detect_model_property(model_class)
-        if not model_property:
-            logger.debug("Could not detect model property for {}", framework_id)
-            return False
-        
-        logger.debug("Framework {} can be handled generically", framework_id)
-        return True
-        
-    except Exception as e:
-        logger.debug("Framework {} cannot be handled generically: {}", framework_id, e)
+    # Lightweight validation - no adapter creation
+    is_valid, model_class = GenericFrameworkAdapter._validate_framework_import(framework_id)
+    if not is_valid or not model_class:
+        logger.debug("Framework {} failed import validation", framework_id)
         return False
+    
+    # Validate model property detection
+    if not GenericFrameworkAdapter._validate_model_property(model_class):
+        logger.debug("Framework {} failed model property validation", framework_id)
+        return False
+    
+    logger.debug("Framework {} can be handled generically", framework_id)
+    return True
 
 
 def create_generic_adapter(framework_id: str) -> Optional[GenericFrameworkAdapter]:
@@ -360,6 +415,11 @@ def create_generic_adapter(framework_id: str) -> Optional[GenericFrameworkAdapte
         adapter = GenericFrameworkAdapter(framework_id)
         logger.info("Created dynamic generic adapter for framework: {}", framework_id)
         return adapter
-    except Exception as e:
-        logger.error(f"Failed to create generic adapter for {framework_id}: {e}")
+    except (FrameworkNotSupportedError, ModelClassNotFoundError, ModelPropertyDetectionError) as e:
+        # Expected errors - log and return None for graceful fallback
+        logger.debug("Cannot create generic adapter for {}: {}", framework_id, e)
         return None
+    except Exception as e:
+        # Unexpected errors - log as error and re-raise wrapped
+        logger.error("Unexpected error creating generic adapter for {}: {}", framework_id, e)
+        raise GenericAdapterCreationError(f"Unexpected error creating generic adapter for {framework_id}") from e
