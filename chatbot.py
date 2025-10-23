@@ -14,6 +14,9 @@ import glob
 import sys
 
 from strands_agent_factory import AgentFactoryConfig, AgentFactory
+from strands_agent_factory.core.exceptions import (
+    FactoryError, ConfigurationError, InitializationError, ModelLoadError
+)
 
 class AgenticChatbot:
 
@@ -35,7 +38,7 @@ class AgenticChatbot:
 
 Engage naturally in conversation while leveraging your tools when appropriate.""",
             tool_config_paths=tool_config_paths,
-            response_prefix="🤖 Assistant: "
+            response_prefix="Assistant: "
         )
         
         self.factory = None
@@ -43,39 +46,53 @@ Engage naturally in conversation while leveraging your tools when appropriate.""
 
     async def start(self):
         """Initialize the agent factory and start the chatbot."""
-        print("🤖 Starting Agentic Chatbot...")
+        print("Starting Agentic Chatbot...")
         print("   Initializing tools and agent...")
         
-        self.factory = AgentFactory(self.config)
-        await self.factory.initialize()
-        with self.factory.create_agent() as agent:
-            self.agent = agent
-            print(f"   Model: {self.config.model}")
-            print(f"   Tools available: {len(self.agent.tool_names)} tools")
-            print("   Ready! Type 'help' for commands or start chatting.\n")
+        try:
+            self.factory = AgentFactory(self.config)
+            await self.factory.initialize()
             
-            await self._chat_loop()
+            with self.factory.create_agent() as agent:
+                self.agent = agent
+                print(f"   Model: {self.config.model}")
+                print(f"   Tools available: {len(self.agent.tool_names)} tools")
+                print("   Ready! Type 'help' for commands or start chatting.\n")
+                
+                await self._chat_loop()
+                
+        except ConfigurationError as e:
+            print(f"Configuration error: {e}")
+        except InitializationError as e:
+            print(f"Initialization failed: {e}")
+            print("   Check your API credentials and tool configurations")
+        except ModelLoadError as e:
+            print(f"Model loading failed: {e}")
+        except FactoryError as e:
+            print(f"Factory error: {e}")
+        except Exception as e:
+            print(f"Unexpected error: {e}")
 
     async def _chat_loop(self):
         """Main conversation loop."""
         while True:
             try:
                 # Get user input
-                user_input = input("👤 You: ").strip()
+                user_input = input("You: ").strip()
                 
                 if not user_input:
                     continue
                     
                 # Handle special commands
                 if user_input.lower() in ['/quit', '/exit', '/bye']:
-                    print("👋 Goodbye!")
+                    print("Goodbye!")
                     break
                 elif user_input.lower() == '/help':
                     self._show_help()
                     continue
                 elif user_input.lower() == '/clear':
                     self.agent.clear_messages()
-                    print("🧹 Conversation history cleared.\n")
+                    print("Conversation history cleared.\n")
                     continue
 
                 # Process the message with the agent
@@ -83,16 +100,16 @@ Engage naturally in conversation while leveraging your tools when appropriate.""
                 await self.agent.send_message_to_agent(user_input)
 
             except (KeyboardInterrupt, EOFError):
-                print("\n👋 Goodbye!")
+                print("\nGoodbye!")
                 break
             except Exception as e:
-                print(f"\n❌ Error: {e}")
+                print(f"\nError: {e}")
                 print("Type 'help' for available commands.\n")
 
     def _show_help(self):
         """Show available commands."""
         print("""
-🤖 Agentic Chatbot Commands:
+Agentic Chatbot Commands:
 
 **Chat Commands:**
   /help              - Show this help message
@@ -111,7 +128,7 @@ Just chat naturally - the assistant will use tools when appropriate!
 
 async def main():
     """Main entry point."""
-    print("🚀 Agentic Chatbot with Tool Capabilities")
+    print("Agentic Chatbot with Tool Capabilities")
     print("=" * 50)
     
     model = sys.argv[1] if len(sys.argv) > 1 else "litellm:gemini/gemini-2.5-flash"
@@ -123,7 +140,7 @@ if __name__ == "__main__":
     try:
         asyncio.run(main())
     except (KeyboardInterrupt, EOFError):
-        print("\n👋 Goodbye!")
+        print("\nGoodbye!")
     except Exception as e:
-        print(f"❌ Failed to start chatbot: {e}")
+        print(f"Failed to start chatbot: {e}")
         sys.exit(1)

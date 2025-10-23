@@ -20,7 +20,7 @@ Components:
 Loading Strategy:
     1. Explicit adapters (priority): Custom implementations for special cases
     2. Generic adapters (automatic): Standard strands-agents providers
-    3. Graceful failure: Clear error reporting
+    3. Clear error reporting: Raise exceptions for unsupported frameworks
 
 The adapters follow a consistent pattern for:
     - Model loading and configuration
@@ -42,6 +42,7 @@ from strands.types.content import Messages
 from loguru import logger
 
 from ..core.types import Tool
+from ..core.exceptions import AdapterError, ConfigurationError
 import importlib
 
 # ============================================================================
@@ -301,7 +302,7 @@ class FrameworkAdapter(ABC):
 # Framework Adapter Factory with Generic Support
 # ============================================================================
 
-def load_framework_adapter(adapter_name: str) -> Optional[FrameworkAdapter]:
+def load_framework_adapter(adapter_name: str) -> FrameworkAdapter:
     """
     Load a framework adapter by name with automatic generic fallback.
     
@@ -313,7 +314,7 @@ def load_framework_adapter(adapter_name: str) -> Optional[FrameworkAdapter]:
        from FRAMEWORK_HANDLERS for frameworks requiring special handling
     2. **Generic adapters** (automatic): Use generic implementation for
        frameworks following standard strands-agents patterns
-    3. **Graceful failure**: Return None if no suitable adapter can be created
+    3. **Clear error reporting**: Raise AdapterError if no suitable adapter found
     
     This approach significantly reduces maintenance overhead while providing
     broader framework support and maintaining compatibility for special cases.
@@ -322,7 +323,11 @@ def load_framework_adapter(adapter_name: str) -> Optional[FrameworkAdapter]:
         adapter_name: Name of the framework adapter to load
         
     Returns:
-        Optional[FrameworkAdapter]: Instantiated adapter, or None if loading fails
+        FrameworkAdapter: Instantiated adapter
+        
+    Raises:
+        ConfigurationError: If adapter_name is invalid
+        AdapterError: If adapter cannot be loaded or framework is unsupported
         
     Example:
         Explicit adapter (custom implementation)::
@@ -339,9 +344,8 @@ def load_framework_adapter(adapter_name: str) -> Optional[FrameworkAdapter]:
             
         Unsupported framework::
         
-            >>> adapter = load_framework_adapter("nonexistent")
-            >>> adapter is None
-            True
+            >>> load_framework_adapter("nonexistent")
+            AdapterError: No adapter available for framework: nonexistent
             
     Note:
         The function uses lazy importing to avoid loading framework
@@ -349,29 +353,37 @@ def load_framework_adapter(adapter_name: str) -> Optional[FrameworkAdapter]:
         are only created if the framework follows standard patterns and
         has required dependencies available.
     """
-    logger.trace(f"load_framework_adapter called with adapter_name: '{adapter_name}'")
+    logger.debug(f"Loading framework adapter: {adapter_name}")
     
-    if not adapter_name:
-        logger.error("Empty adapter_name provided")
-        return None
+    if not adapter_name or not isinstance(adapter_name, str):
+        raise ConfigurationError(f"Invalid adapter name: {adapter_name}")
     
     # 1. Try explicit adapter first (highest priority)
     if adapter_name in FRAMEWORK_HANDLERS:
         logger.debug(f"Using explicit adapter for {adapter_name}")
-        return _load_explicit_adapter(adapter_name)
+        try:
+            return _load_explicit_adapter(adapter_name)
+        except Exception as e:
+            raise AdapterError(f"Failed to load explicit adapter for {adapter_name}") from e
     
     # 2. Try generic adapter (automatic support)
     logger.debug(f"Checking generic adapter support for {adapter_name}")
     if _can_handle_generically(adapter_name):
         logger.debug(f"Using generic adapter for {adapter_name}")
-        return _create_generic_adapter(adapter_name)
+        try:
+            return _create_generic_adapter(adapter_name)
+        except Exception as e:
+            raise AdapterError(f"Failed to create generic adapter for {adapter_name}") from e
     
     # 3. No suitable adapter found
-    logger.error(f"No adapter available for framework: {adapter_name}")
-    return None
+    raise AdapterError(
+        f"No adapter available for framework: {adapter_name}. "
+        f"Supported explicit adapters: {list(FRAMEWORK_HANDLERS.keys())}. "
+        f"Generic adapter support requires standard strands-agents patterns."
+    )
 
 
-def _load_explicit_adapter(adapter_name: str) -> Optional[FrameworkAdapter]:
+def _load_explicit_adapter(adapter_name: str) -> FrameworkAdapter:
     """
     Load an explicit adapter from the FRAMEWORK_HANDLERS registry.
     
@@ -379,7 +391,10 @@ def _load_explicit_adapter(adapter_name: str) -> Optional[FrameworkAdapter]:
         adapter_name: Framework name to load
         
     Returns:
-        Instantiated explicit adapter or None if loading fails
+        Instantiated explicit adapter
+        
+    Raises:
+        AdapterError: If adapter loading fails
     """
     try:
         class_path = FRAMEWORK_HANDLERS[adapter_name]
@@ -396,8 +411,7 @@ def _load_explicit_adapter(adapter_name: str) -> Optional[FrameworkAdapter]:
         return adapter
         
     except Exception as e:
-        logger.error(f"Failed to load explicit adapter for {adapter_name}: {e}")
-        return None
+        raise AdapterError(f"Failed to load explicit adapter for {adapter_name}") from e
 
 
 def _can_handle_generically(framework_id: str) -> bool:
@@ -425,7 +439,7 @@ def _can_handle_generically(framework_id: str) -> bool:
         return False
 
 
-def _create_generic_adapter(framework_id: str) -> Optional[FrameworkAdapter]:
+def _create_generic_adapter(framework_id: str) -> FrameworkAdapter:
     """
     Create a generic adapter for a framework.
     
@@ -433,33 +447,19 @@ def _create_generic_adapter(framework_id: str) -> Optional[FrameworkAdapter]:
         framework_id: Framework identifier
         
     Returns:
-        Generic adapter instance or None if creation fails
+        Generic adapter instance
+        
+    Raises:
+        AdapterError: If generic adapter creation fails
     """
     try:
         # Lazy import to avoid loading generic adapter unless needed
         from .generic import create_generic_adapter
-        return create_generic_adapter(framework_id)
+        adapter = create_generic_adapter(framework_id)
+        if not adapter:
+            raise AdapterError(f"Generic adapter creation returned None for {framework_id}")
+        return adapter
     except ImportError as e:
-        logger.error(f"Generic adapter module not available: {e}")
-        return None
+        raise AdapterError(f"Generic adapter module not available: {e}") from e
     except Exception as e:
-        logger.error(f"Failed to create generic adapter for {framework_id}: {e}")
-        return None
-
-
-# Legacy function for backward compatibility
-def load_explicit_adapter(adapter_name: str) -> Optional[FrameworkAdapter]:
-    """
-    Load an explicit adapter (legacy function for backward compatibility).
-    
-    Args:
-        adapter_name: Framework name to load
-        
-    Returns:
-        Instantiated adapter or None if loading fails
-        
-    Note:
-        This function is deprecated. Use load_framework_adapter() instead.
-    """
-    logger.warning("load_explicit_adapter() is deprecated, use load_framework_adapter() instead")
-    return _load_explicit_adapter(adapter_name)
+        raise AdapterError(f"Failed to create generic adapter for {framework_id}") from e

@@ -34,6 +34,13 @@ from strands_agent_factory.messaging.content import paths_to_file_references
 
 from .config import AgentFactoryConfig
 from .types import FrameworkAdapter, ToolSpec
+from .exceptions import (
+    ConfigurationError,
+    InitializationError,
+    ModelLoadError,
+    AdapterError,
+    ToolLoadError
+)
 from strands_agent_factory.session.manager import DelegatingSession
 from strands_agent_factory.tools.factory import ToolFactory
 
@@ -145,7 +152,7 @@ class AgentFactory:
         logger.debug(f"_parse_model_string returning: {result}")
         return result
     
-    async def initialize(self) -> bool:
+    async def initialize(self) -> None:
         """
         Perform async initialization of the agent factory.
         
@@ -153,18 +160,21 @@ class AgentFactory:
         a functional agent including tool discovery, framework setup, file
         processing, and conversation management initialization.
         
-        Returns:
-            bool: True if initialization successful, False otherwise
+        Raises:
+            InitializationError: If initialization fails at any step
+            AdapterError: If framework adapter setup fails
+            ToolLoadError: If tool loading fails
+            ConfigurationError: If configuration is invalid
         """
         logger.trace(f"initialize called, _initialized={self._initialized}")
         
         if self._initialized:
-            logger.warning("Factory already initialized")
-            return True
+            logger.debug("Factory already initialized")
+            return
             
+        logger.info("Initializing strands agent factory...")
+        
         try:
-            logger.info("Initializing strands agent factory...")
-            
             # 1. Initialize framework adapter
             self._setup_framework_adapter()
             
@@ -178,12 +188,14 @@ class AgentFactory:
             self._setup_conversation_manager()
             
             self._initialized = True
-            logger.trace("initialize completed successfully")
-            return True
+            logger.info("Factory initialization completed successfully")
             
+        except (AdapterError, ToolLoadError, ConfigurationError) as e:
+            # Re-raise known errors with context
+            raise InitializationError(f"Factory initialization failed: {e}") from e
         except Exception as e:
-            logger.error(f"Factory initialization failed: {e}")
-            return False
+            # Wrap unexpected errors
+            raise InitializationError(f"Unexpected error during factory initialization: {e}") from e
 
     async def _load_tools_specs(self) -> None:
         """
@@ -191,6 +203,9 @@ class AgentFactory:
 
         Python tools will be fully created and MCP tools will be ready for
         activation upon Agent startup.
+        
+        Raises:
+            ToolLoadError: If tool loading fails
         """
         logger.trace(f"_load_tools_specs called with tool_config_paths: {self.config.tool_config_paths}")
         
@@ -200,43 +215,56 @@ class AgentFactory:
             
         logger.debug(f"Loading tool specs from {len(self.config.tool_config_paths)} config paths")
         
-        # Create tool factory with paths
-        tool_factory = ToolFactory(self.config.tool_config_paths)
-        
-        # Create tool specs from loaded configurations
-        discovery_result, tool_spec_results = tool_factory.create_tool_specs()
-        
-        # Extract successful tool specs
-        self._loaded_tool_specs = [result.tool_spec for result in tool_spec_results if result.tool_spec]
-        
-        if discovery_result and discovery_result.failed_configs:
-            logger.warning(f"Failed to load {len(discovery_result.failed_configs)} tool configurations")
-            for failed_config in discovery_result.failed_configs:
-                logger.warning(f"  - {failed_config.get('config_id', 'unknown')}: {failed_config.get('error', 'unknown error')}")
-        
-        # Log any tool spec creation failures
-        failed_specs = [result for result in tool_spec_results if result.error]
-        if failed_specs:
-            logger.warning(f"Failed to create {len(failed_specs)} tool specifications")
-            for failed_spec in failed_specs:
-                logger.warning(f"  - {failed_spec.error}")
-        
-        logger.trace(f"_load_tools_specs completed with {len(self._loaded_tool_specs)} tool specs loaded")
+        try:
+            # Create tool factory with paths
+            tool_factory = ToolFactory(self.config.tool_config_paths)
+            
+            # Create tool specs from loaded configurations
+            discovery_result, tool_spec_results = tool_factory.create_tool_specs()
+            
+            # Extract successful tool specs
+            self._loaded_tool_specs = [result.tool_spec for result in tool_spec_results if result.tool_spec]
+            
+            if discovery_result and discovery_result.failed_configs:
+                logger.warning(f"Failed to load {len(discovery_result.failed_configs)} tool configurations")
+                for failed_config in discovery_result.failed_configs:
+                    logger.warning(f"  - {failed_config.get('config_id', 'unknown')}: {failed_config.get('error', 'unknown error')}")
+            
+            # Log any tool spec creation failures
+            failed_specs = [result for result in tool_spec_results if result.error]
+            if failed_specs:
+                logger.warning(f"Failed to create {len(failed_specs)} tool specifications")
+                for failed_spec in failed_specs:
+                    logger.warning(f"  - {failed_spec.error}")
+            
+            logger.trace(f"_load_tools_specs completed with {len(self._loaded_tool_specs)} tool specs loaded")
+            
+        except Exception as e:
+            raise ToolLoadError(f"Failed to load tool specifications: {e}") from e
         
     async def _build_initial_messages(self) -> None:
-        """Build initial messages from file paths and initial message."""
+        """
+        Build initial messages from file paths and initial message.
+        
+        Raises:
+            ConfigurationError: If file paths are invalid
+        """
         logger.trace(f"_build_initial_messages called with file_paths: {self.config.file_paths}; initial_message: {self.config.initial_message}")
 
         if not (self.config.file_paths or self.config.initial_message):
             logger.debug("No file paths or initial message provided, skipping initial message creation")
             return
         
-        initial_message = self.config.initial_message or "The user has provided the following resources. Acknowledge receipt and await instructions."
-        startup_files_references = paths_to_file_references(self.config.file_paths) if self.config.file_paths else []
+        try:
+            initial_message = self.config.initial_message or "The user has provided the following resources. Acknowledge receipt and await instructions."
+            startup_files_references = paths_to_file_references(self.config.file_paths) if self.config.file_paths else []
 
-        self._initial_messages = generate_llm_messages("\n".join([initial_message] + startup_files_references))
+            self._initial_messages = generate_llm_messages("\n".join([initial_message] + startup_files_references))
 
-        logger.trace(f"_build_initial_messages completed with {len(self._initial_messages) if self._initial_messages else 0} messages created")
+            logger.trace(f"_build_initial_messages completed with {len(self._initial_messages) if self._initial_messages else 0} messages created")
+            
+        except Exception as e:
+            raise ConfigurationError(f"Failed to build initial messages: {e}") from e
     
     def _setup_framework_adapter(self) -> None:
         """
@@ -247,19 +275,17 @@ class AgentFactory:
         and configuration.
         
         Raises:
-            ValueError: If the framework is not supported
-            RuntimeError: If adapter initialization fails
+            AdapterError: If the framework is not supported or adapter initialization fails
         """
         logger.trace(f"_setup_framework_adapter called with framework_name: '{self._framework_name}'")
         
-        self._framework_adapter = load_framework_adapter(self._framework_name)
-        if not self._framework_adapter:
-            error_msg = f"Unsupported framework: {self._framework_name}"
-            logger.error(f"Failed to load framework adapter for: {self._framework_name}")
-            raise ValueError(error_msg)
-        
-        logger.debug(f"Framework adapter loaded successfully: {type(self._framework_adapter).__name__}")
-        logger.trace("_setup_framework_adapter completed")
+        try:
+            self._framework_adapter = load_framework_adapter(self._framework_name)
+            logger.debug(f"Framework adapter loaded successfully: {type(self._framework_adapter).__name__}")
+            logger.trace("_setup_framework_adapter completed")
+            
+        except Exception as e:
+            raise AdapterError(f"Failed to setup framework adapter for '{self._framework_name}': {e}") from e
     
     def _setup_conversation_manager(self) -> None:
         """
@@ -268,6 +294,9 @@ class AgentFactory:
         Creates the appropriate ConversationManager implementation based on
         the conversation_manager_type specified in configuration. Handles
         fallback to NullConversationManager if creation fails.
+        
+        Raises:
+            ConfigurationError: If conversation manager configuration is invalid
         """
         logger.trace(f"_setup_conversation_manager called with conversation_manager_type: {self.config.conversation_manager_type}")
         
@@ -284,7 +313,7 @@ class AgentFactory:
         
         logger.trace("_setup_conversation_manager completed")
 
-    def create_agent(self) -> Optional[Agent]:
+    def create_agent(self) -> Agent:
         """
         Create the actual strands-agents Agent instance.
         
@@ -297,17 +326,20 @@ class AgentFactory:
         interface.
         
         Returns:
-            Optional[Agent]: Created agent instance, or None if creation fails
+            Agent: Created agent instance
+            
+        Raises:
+            InitializationError: If factory not initialized
+            ModelLoadError: If model loading fails
+            AdapterError: If framework adapter is not available
         """
         logger.trace(f"create_agent called, _initialized={self._initialized}, _framework_adapter={self._framework_adapter is not None}")
         
         if not self._initialized:
-            logger.error("Cannot create agent: factory not initialized. Call initialize() first.")
-            return None
+            raise InitializationError("Cannot create agent: factory not initialized. Call initialize() first.")
             
         if not self._framework_adapter:
-            logger.error("Cannot create agent: no framework adapter available")
-            return None
+            raise AdapterError("Cannot create agent: no framework adapter available")
             
         try:
             # Pass the parsed model_id (without framework prefix) to the adapter
@@ -315,8 +347,7 @@ class AgentFactory:
             logger.debug(f"Loading model with model_id='{self._model_id}', model_config={self.config.model_config}")
             model = self._framework_adapter.load_model(self._model_id, self.config.model_config)
             if not model: 
-                logger.error("Framework adapter returned None for model")
-                return None
+                raise ModelLoadError("Framework adapter returned None for model")
             
             logger.debug(f"Model loaded successfully: {type(model).__name__}")
 
@@ -344,6 +375,7 @@ class AgentFactory:
             logger.trace("create_agent completed successfully")
             return proxy_agent
             
+        except (ModelLoadError, AdapterError) as e:
+            raise  # Re-raise known errors
         except Exception as e:
-            logger.error(f"Error initializing the agent: {e}")
-            return None
+            raise ModelLoadError(f"Unexpected error creating agent: {e}") from e

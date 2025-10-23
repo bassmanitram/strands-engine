@@ -8,11 +8,14 @@ for basic conversational AI interactions.
 
 import asyncio
 from strands_agent_factory import AgentFactoryConfig, AgentFactory
+from strands_agent_factory.core.exceptions import (
+    FactoryError, ConfigurationError, InitializationError, ModelLoadError
+)
 
 
 async def basic_example():
     """Basic agent creation and interaction."""
-    print("🚀 Basic strands_agent_factory Example")
+    print("Basic strands_agent_factory Example")
     print("=" * 50)
     
     # Create configuration
@@ -20,54 +23,59 @@ async def basic_example():
         model="gpt-4o",  # Use OpenAI GPT-4
         system_prompt="You are a helpful assistant that provides clear, concise answers."
     )
-    print(f"✓ Created configuration with model: {config.model}")
+    print(f"Created configuration with model: {config.model}")
     
-    # Create and initialize factory
-    factory = AgentFactory(config)
-    print("✓ Created AgentFactory")
-    
-    success = await factory.initialize()
-    if not success:
-        print("❌ Factory initialization failed - check your API credentials")
-        return
-    
-    print("✓ Factory initialized successfully")
-    
-    # Create agent
-    agent = factory.create_agent()
-    if not agent:
-        print("❌ Agent creation failed")
-        return
-    
-    print("✓ Agent created successfully")
-    print("=" * 50)
-    
-    # Interactive conversation
-    print("💬 Starting conversation (type 'quit' to exit)")
-    while True:
-        try:
-            user_input = input("\nYou: ").strip()
-            if user_input.lower() in ['quit', 'exit', 'bye']:
+    try:
+        # Create and initialize factory
+        factory = AgentFactory(config)
+        print("Created AgentFactory")
+        
+        await factory.initialize()
+        print("Factory initialized successfully")
+        
+        # Create agent
+        agent = factory.create_agent()
+        print("Agent created successfully")
+        print("=" * 50)
+        
+        # Interactive conversation
+        print("Starting conversation (type 'quit' to exit)")
+        while True:
+            try:
+                user_input = input("\nYou: ").strip()
+                if user_input.lower() in ['quit', 'exit', 'bye']:
+                    break
+                    
+                if not user_input:
+                    continue
+                    
+                success = await agent.send_message_to_agent(user_input, show_user_input=False)
+                if not success:
+                    print("Failed to process message")
+                    
+            except KeyboardInterrupt:
                 break
-                
-            if not user_input:
-                continue
-                
-            success = await agent.send_message_to_agent(user_input, show_user_input=False)
-            if not success:
-                print("❌ Failed to process message")
-                
-        except KeyboardInterrupt:
-            break
-        except Exception as e:
-            print(f"❌ Error: {e}")
-    
-    print("\n👋 Goodbye!")
+            except Exception as e:
+                print(f"Error: {e}")
+        
+        print("\nGoodbye!")
+        
+    except ConfigurationError as e:
+        print(f"Configuration error: {e}")
+    except InitializationError as e:
+        print(f"Initialization failed: {e}")
+        print("   Check your API credentials and configuration")
+    except ModelLoadError as e:
+        print(f"Model loading failed: {e}")
+    except FactoryError as e:
+        print(f"Factory error: {e}")
+    except Exception as e:
+        print(f"Unexpected error: {e}")
 
 
 async def advanced_example():
     """Advanced configuration with tools and file processing."""
-    print("🚀 Advanced strands_agent_factory Example")
+    print("Advanced strands_agent_factory Example")
     print("=" * 50)
     
     # Create advanced configuration
@@ -91,45 +99,46 @@ async def advanced_example():
         ],
         session_id="advanced_example_session"
     )
-    print(f"✓ Created advanced configuration")
+    print(f"Created advanced configuration")
     
-    # Create and initialize factory
-    factory = AgentFactory(config)
-    success = await factory.initialize()
-    
-    if not success:
-        print("❌ Factory initialization failed")
-        return
-    
-    print("✓ Advanced factory initialized")
-    
-    # Create agent
-    agent = factory.create_agent()
-    if not agent:
-        print("❌ Agent creation failed")
-        return
-    
-    print("✓ Advanced agent created")
-    print("=" * 50)
-    
-    # Example interactions
-    test_messages = [
-        "What files do you have access to?",
-        "What tools are available to you?",
-        "Can you help me analyze the uploaded data?",
-    ]
-    
-    for message in test_messages:
-        print(f"\n🔹 Testing: {message}")
-        success = await agent.send_message_to_agent(message, show_user_input=False)
-        if not success:
-            print("❌ Message failed")
-        print("-" * 30)
+    try:
+        # Create and initialize factory
+        factory = AgentFactory(config)
+        await factory.initialize()
+        print("Advanced factory initialized")
+        
+        # Create agent
+        agent = factory.create_agent()
+        print("Advanced agent created")
+        print("=" * 50)
+        
+        # Example interactions
+        test_messages = [
+            "What files do you have access to?",
+            "What tools are available to you?",
+            "Can you help me analyze the uploaded data?",
+        ]
+        
+        for message in test_messages:
+            print(f"\nTesting: {message}")
+            success = await agent.send_message_to_agent(message, show_user_input=False)
+            if not success:
+                print("Message failed")
+            print("-" * 30)
+            
+    except ConfigurationError as e:
+        print(f"Configuration error: {e}")
+    except InitializationError as e:
+        print(f"Initialization failed: {e}")
+    except FactoryError as e:
+        print(f"Factory error: {e}")
+    except Exception as e:
+        print(f"Unexpected error: {e}")
 
 
 async def litellm_example():
     """Example using LiteLLM for multi-provider support."""
-    print("🚀 LiteLLM Multi-Provider Example")
+    print("LiteLLM Multi-Provider Example")
     print("=" * 50)
     
     # Test different providers through LiteLLM
@@ -140,7 +149,7 @@ async def litellm_example():
     ]
     
     for model_string, description in providers:
-        print(f"\n🔹 Testing {description}")
+        print(f"\nTesting {description}")
         print(f"   Model: {model_string}")
         
         try:
@@ -150,30 +159,30 @@ async def litellm_example():
             )
             
             factory = AgentFactory(config)
-            success = await factory.initialize()
+            await factory.initialize()
+            agent = factory.create_agent()
+            
+            print(f"   {description} initialized successfully")
+            
+            # Quick test
+            success = await agent.send_message_to_agent(
+                "Hello! Please confirm you're working by saying 'System operational'",
+                show_user_input=False
+            )
             
             if success:
-                agent = factory.create_agent()
-                if agent:
-                    print(f"   ✓ {description} initialized successfully")
-                    
-                    # Quick test
-                    success = await agent.send_message_to_agent(
-                        "Hello! Please confirm you're working by saying 'System operational'",
-                        show_user_input=False
-                    )
-                    
-                    if success:
-                        print(f"   ✓ {description} test completed")
-                    else:
-                        print(f"   ❌ {description} interaction failed")
-                else:
-                    print(f"   ❌ {description} agent creation failed")
+                print(f"   {description} test completed")
             else:
-                print(f"   ❌ {description} initialization failed")
+                print(f"   {description} interaction failed")
                 
+        except ConfigurationError as e:
+            print(f"   {description} configuration error: {e}")
+        except InitializationError as e:
+            print(f"   {description} initialization failed: {e}")
+        except FactoryError as e:
+            print(f"   {description} factory error: {e}")
         except Exception as e:
-            print(f"   ❌ {description} error: {e}")
+            print(f"   {description} unexpected error: {e}")
         
         print("-" * 40)
 
