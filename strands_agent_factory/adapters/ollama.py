@@ -93,7 +93,9 @@ class OllamaAdapter(FrameworkAdapter):
             str: Framework identifier "ollama" for logging and debugging
         """
         logger.trace("OllamaAdapter.framework_name called")
-        return "ollama"
+        result = "ollama"
+        logger.trace("OllamaAdapter.framework_name returning: {}", result)
+        return result
 
     def load_model(self, model_name: Optional[str] = None, model_config: Optional[Dict[str, Any]] = None) -> OllamaModel:
         """
@@ -115,6 +117,10 @@ class OllamaAdapter(FrameworkAdapter):
             
         Returns:
             OllamaModel: Configured model instance ready for agent use
+            
+        Raises:
+            ValueError: If neither model_name nor model in config is provided
+            RuntimeError: If model creation fails
             
         Example:
             Basic local model::
@@ -146,7 +152,9 @@ class OllamaAdapter(FrameworkAdapter):
             instances. Ollama client arguments are passed directly to the
             underlying Ollama client for advanced configuration.
         """
-        logger.trace("OllamaAdapter.load_model called with model_name='{}', model_config={}", model_name, model_config)
+        if logger.level('TRACE').no >= logger._core.min_level:
+            logger.trace("OllamaAdapter.load_model called with model_name='{}', model_config keys: {}", 
+                        model_name, list(model_config.keys()) if model_config else [])
         
         model_config = model_config or {}
         logger.debug("Using model_config: {}", model_config)
@@ -156,17 +164,29 @@ class OllamaAdapter(FrameworkAdapter):
             model_config["model"] = model_name
             logger.debug("Set model_config['model'] to '{}'", model_name)
         
+        # Validate that we have a model identifier
+        if not model_config.get("model"):
+            logger.error("No model identifier provided")
+            raise ValueError("Model identifier must be provided either as model_name parameter or in model_config['model']")
+        
         # Extract Ollama-specific configuration
         host = model_config.pop("host", "127.0.0.1:11434")
         ollama_client_args = model_config.pop("ollama_client_args", None)
         
         logger.debug("Using host: {}", host)
-        logger.debug("Extracted ollama_client_args: {}", ollama_client_args)
-        logger.debug("Final model_config after extraction: {}", model_config)
+        if logger.level('TRACE').no >= logger._core.min_level:
+            logger.trace("Extracted ollama_client_args: {}", ollama_client_args)
+            logger.trace("Final model_config after extraction: {}", model_config)
         
-        # Create and return the Ollama model
-        logger.debug("Creating OllamaModel with host={}, ollama_client_args={}, model_config={}", host, ollama_client_args, model_config)
-        model = OllamaModel(host=host, ollama_client_args=ollama_client_args, model_config=model_config)
-        
-        logger.debug("OllamaModel created successfully: {}", type(model).__name__)
-        return model
+        try:
+            # Create and return the Ollama model
+            logger.debug("Creating OllamaModel with host={}", host)
+            model = OllamaModel(host=host, ollama_client_args=ollama_client_args, **model_config)
+            
+            logger.debug("OllamaModel created successfully: {}", type(model).__name__)
+            logger.trace("OllamaAdapter.load_model completed successfully")
+            return model
+            
+        except Exception as e:
+            logger.error("Failed to create OllamaModel: {}", e)
+            raise RuntimeError(f"Failed to create Ollama model: {e}") from e

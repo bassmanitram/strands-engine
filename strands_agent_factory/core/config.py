@@ -2,7 +2,7 @@
 Configuration management for strands_agent_factory.
 
 This module provides the main configuration dataclass for the strands_agent_factory
-package. EngineConfig consolidates all the configuration parameters needed
+package. AgentFactoryConfig consolidates all the configuration parameters needed
 to create and manage strands-agents Agent instances.
 
 The configuration covers:
@@ -21,6 +21,8 @@ from typing import Any, Callable, Dict, List, Optional, Tuple, Literal
 from pathlib import Path
 import os
 import re
+
+from loguru import logger
 
 from .types import PathLike, Message
 from .exceptions import ConfigurationError
@@ -271,15 +273,29 @@ class AgentFactoryConfig:
         Raises:
             ConfigurationError: If any configuration parameter is invalid
         """
+        logger.trace("AgentFactoryConfig.__post_init__ called")
+        
         self._validate_model()
         self._validate_conversation_management()
         self._validate_file_paths()
         self._validate_tool_config_paths()
         self._validate_session_config()
         self._validate_model_config()
+        
+        logger.trace("AgentFactoryConfig.__post_init__ completed")
 
     def _validate_model(self):
-        """Validate model identifier string."""
+        """
+        Validate model identifier string.
+        
+        Ensures the model identifier is properly formatted and contains
+        valid characters for framework and model specification.
+        
+        Raises:
+            ConfigurationError: If model identifier is invalid
+        """
+        logger.trace("_validate_model called with model: '{}'", self.model)
+        
         if not self.model:
             raise ConfigurationError("Model identifier is required")
         
@@ -297,9 +313,21 @@ class AgentFactoryConfig:
                 f"Invalid model identifier format: '{self.model}'. "
                 f"Expected patterns: 'model', 'framework:model', or 'framework:provider/model'"
             )
+        
+        logger.trace("_validate_model completed successfully")
 
     def _validate_conversation_management(self):
-        """Validate conversation management parameters."""
+        """
+        Validate conversation management parameters.
+        
+        Ensures all conversation management settings are within valid ranges
+        and are compatible with each other.
+        
+        Raises:
+            ConfigurationError: If conversation management parameters are invalid
+        """
+        logger.trace("_validate_conversation_management called")
+        
         # Validate sliding window size
         if not isinstance(self.sliding_window_size, int):
             raise ConfigurationError(f"sliding_window_size must be an integer, got {type(self.sliding_window_size).__name__}")
@@ -331,7 +359,18 @@ class AgentFactoryConfig:
             raise ConfigurationError(f"summary_ratio must be between 0.1 and 0.8, got {self.summary_ratio}")
 
     def _validate_file_paths(self):
-        """Validate file upload paths."""
+        """
+        Validate file upload paths.
+        
+        Ensures all specified files exist, are readable, and have valid
+        mimetype specifications.
+        
+        Raises:
+            ConfigurationError: If any file path is invalid or inaccessible
+        """
+        if logger.level('TRACE').no >= logger._core.min_level:
+            logger.trace("_validate_file_paths called with {} file paths", len(self.file_paths))
+        
         if not isinstance(self.file_paths, list):
             raise ConfigurationError(f"file_paths must be a list, got {type(self.file_paths).__name__}")
         
@@ -364,7 +403,18 @@ class AgentFactoryConfig:
                 raise ConfigurationError(f"Mimetype must be a string or None, got {type(mimetype).__name__} at file_paths[{i}]")
 
     def _validate_tool_config_paths(self):
-        """Validate tool configuration paths."""
+        """
+        Validate tool configuration paths.
+        
+        Ensures all tool configuration paths exist and are accessible,
+        whether they are files or directories.
+        
+        Raises:
+            ConfigurationError: If any tool config path is invalid or inaccessible
+        """
+        if logger.level('TRACE').no >= logger._core.min_level:
+            logger.trace("_validate_tool_config_paths called with {} tool config paths", len(self.tool_config_paths))
+        
         if not isinstance(self.tool_config_paths, list):
             raise ConfigurationError(f"tool_config_paths must be a list, got {type(self.tool_config_paths).__name__}")
         
@@ -391,7 +441,17 @@ class AgentFactoryConfig:
                 raise ConfigurationError(f"Tool config directory is not accessible: {tool_path}")
 
     def _validate_session_config(self):
-        """Validate session management configuration."""
+        """
+        Validate session management configuration.
+        
+        Ensures session directory is writable and session ID contains
+        only filesystem-safe characters.
+        
+        Raises:
+            ConfigurationError: If session configuration is invalid
+        """
+        logger.trace("_validate_session_config called")
+        
         # Validate sessions_home if provided
         if self.sessions_home is not None:
             try:
@@ -427,7 +487,17 @@ class AgentFactoryConfig:
                 raise ConfigurationError(f"session_id contains invalid characters: {self.session_id}")
 
     def _validate_model_config(self):
-        """Validate model configuration parameters."""
+        """
+        Validate model configuration parameters.
+        
+        Ensures common model parameters like temperature, max_tokens, and top_p
+        are within valid ranges when specified.
+        
+        Raises:
+            ConfigurationError: If model configuration parameters are invalid
+        """
+        logger.trace("_validate_model_config called")
+        
         if self.model_config is not None:
             if not isinstance(self.model_config, dict):
                 raise ConfigurationError(f"model_config must be a dictionary, got {type(self.model_config).__name__}")
