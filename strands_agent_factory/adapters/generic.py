@@ -137,6 +137,7 @@ class GenericFrameworkAdapter(FrameworkAdapter):
             AttributeError: If the class cannot be found in the module
         """
         module_path, class_names = self._derive_import_paths()
+        last_exception = None
         
         try:
             logger.debug("Importing from {}", module_path)
@@ -154,10 +155,12 @@ class GenericFrameworkAdapter(FrameworkAdapter):
                 
         except ImportError as e:
             logger.debug("Failed to import module {}: {}", module_path, e)
+            last_exception = e
             raise ImportError(f"Could not import {module_path}. Framework {self._framework_id} may not be supported in strands.models or dependencies missing") from e
         except AttributeError as e:
             logger.debug("Failed to find classes {} in {}: {}", class_names, module_path, e)
-            raise
+            last_exception = e
+            raise AttributeError(f"None of the expected classes {class_names} found in {module_path}") from e
     
     def _detect_model_property(self, model_class) -> str:
         """

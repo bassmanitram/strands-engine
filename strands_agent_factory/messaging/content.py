@@ -272,15 +272,15 @@ def load_structured_file(file_path: PathLike, file_format: str = 'auto') -> Dict
     except yaml.YAMLError as e:
         error_msg = f"Invalid YAML in {file_path}: {e}"
         logger.error(error_msg)
-        raise yaml.YAMLError(error_msg)
+        raise yaml.YAMLError(error_msg) from e
     except json.JSONDecodeError as e:
         error_msg = f"Invalid JSON in {file_path}: {e}"
         logger.error(error_msg)
-        raise json.JSONDecodeError(error_msg, doc="", pos=0)
+        raise json.JSONDecodeError(error_msg, doc="", pos=0) from e
     except Exception as e:
         error_msg = f"Problem loading file {file_path}: {e}"
         logger.error(error_msg)
-        raise ValueError(error_msg)
+        raise ValueError(error_msg) from e
 
 
 # ============================================================================
@@ -327,7 +327,7 @@ def load_file_content(file_path: PathLike, content_type: str = 'auto') -> Union[
     except OSError as e:
         error_msg = f"Error reading file {file_path}: {e}"
         logger.error(error_msg)
-        raise OSError(error_msg)
+        raise OSError(error_msg) from e
 
 
 DOCUMENT_TYPES = [ 'pdf', 'csv', 'doc', 'docx', 'xls', 'xlsx', 'html', 'txt', 'md' ]
