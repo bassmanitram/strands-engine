@@ -1,275 +1,272 @@
 """
-Generic framework adapter for strands_agent_factory.
+Generic Framework Adapter for Dynamic Framework Support
 
-This module provides the GenericFrameworkAdapter class, which enables automatic
-support for strands-agents providers using fully dynamic discovery and 
-introspection, requiring no configuration registry.
+This module provides automatic adapter support for any framework that follows
+standard strands-agents patterns. It uses dynamic discovery to detect and
+support frameworks without requiring explicit adapter implementations.
 
-The generic adapter achieves complete automation through:
-- Dynamic module and class name derivation from framework ID
-- Automatic model property detection via Config class introspection
-- Direct client_args pass-through without extraction
-- Pure import-based validation for framework support
+Key Features:
+- Automatic framework detection via import validation
+- Dynamic model class discovery using naming conventions  
+- Flexible model property detection (model_id, model, model_name, etc.)
+- Zero-configuration support for standard frameworks
 
-This approach eliminates all configuration overhead while providing
-automatic support for any strands-agents provider following standard patterns.
+The generic adapter works by:
+1. Attempting to import the framework's strands model class
+2. Detecting the model configuration property name
+3. Creating and configuring the model dynamically
+
+This approach provides broad framework compatibility while maintaining
+the flexibility to add custom adapters for frameworks with special requirements.
 """
 
 import importlib
-import inspect
-from typing import Any, Dict, List, Optional, Set
-from loguru import logger
+from typing import Any, Dict, Optional, Set
 
+from loguru import logger
 from strands.models import Model
 
-from .base import FrameworkAdapter
-from ..core.types import Tool
+from strands_agent_factory.adapters.base import FrameworkAdapter
 
 
 class GenericFrameworkAdapter(FrameworkAdapter):
     """
-    Fully dynamic adapter that automatically supports any strands-agents provider
-    following standard patterns without requiring any configuration.
+    Generic adapter that provides automatic support for any framework following
+    standard strands-agents patterns.
     
-    This adapter achieves complete automation by:
-    - Deriving module and class names from framework ID
-    - Automatically detecting model property names via introspection
-    - Passing client_args directly without extraction
-    - Using pure import success for validation
+    This adapter uses dynamic discovery to:
+    - Import the framework's strands model class
+    - Detect the model configuration property
+    - Create and configure models automatically
     
-    The adapter works with any framework following strands-agents conventions:
-    - Module: strands.models.{framework}.{Framework}Model
-    - Constructor: __init__(self, *, client_args=None, **model_config)
-    - Config: Nested TypedDict with model property (usually model_id)
+    Works with any framework that:
+    - Has strands model support in strands.models.{framework}
+    - Follows standard naming: strands.models.{framework}.{Framework}Model
+    - Uses standard model properties (model_id, model, model_name, etc.)
     
-    Example:
-        Automatic support for any framework::
+    Examples:
+        >>> adapter = GenericFrameworkAdapter("gemini")
+        >>> model = adapter.load_model("gemini-2.5-flash")
         
-            adapter = GenericFrameworkAdapter("gemini")
-            model = adapter.load_model("gemini-2.5-flash", {
-                "temperature": 0.7,
-                "client_args": {"api_key": "key"}
-            })
-            
-        Works with any framework::
-        
-            adapter = GenericFrameworkAdapter("newframework")
-            # Automatically handles strands.models.newframework.NewframeworkModel
+        >>> adapter = GenericFrameworkAdapter("anthropic") 
+        >>> model = adapter.load_model("claude-3-5-sonnet-20241022")
     """
     
     def __init__(self, framework_id: str):
         """
-        Initialize dynamic adapter for any framework.
+        Initialize the generic adapter for a specific framework.
         
         Args:
-            framework_id: The framework identifier (e.g., 'gemini', 'mistral')
+            framework_id: Framework identifier (e.g., "gemini", "anthropic")
             
         Raises:
-            ValueError: If framework_id is invalid or empty
+            ImportError: If the framework's strands support is not installed
+            AttributeError: If the model class cannot be found
         """
-        if not framework_id or not isinstance(framework_id, str):
-            raise ValueError("framework_id must be a non-empty string")
-            
-        self.framework_id = framework_id.lower()
+        self._framework_id = framework_id
         self._model_class = None
         self._model_property = None
         
-        logger.debug("Initialized GenericFrameworkAdapter for: {}", self.framework_id)
-    
-    def _get_model_class_path(self) -> tuple[str, str]:
-        """
-        Derive module and class names from framework ID.
+        # Perform dynamic discovery during initialization
+        self._model_class = self._import_model_class()
+        self._model_property = self._detect_model_property(self._model_class)
         
-        Uses strands-agents naming conventions to automatically determine
-        the correct module path and class name for any framework.
-        
-        Returns:
-            Tuple of (module_path, class_name)
-            
-        Example:
-            >>> adapter = GenericFrameworkAdapter("gemini")
-            >>> adapter._get_model_class_path()
-            ("strands.models.gemini", "GeminiModel")
-        """
-        module_path = f"strands.models.{self.framework_id}"
-        class_name = f"{self.framework_id.capitalize()}Model"
-        
-        logger.debug("Derived paths: {}.{}", module_path, class_name)
-        return module_path, class_name
-    
-    def _import_model_class(self):
-        """
-        Dynamically import the model class with caching.
-        
-        Returns:
-            The imported strands model class
-            
-        Raises:
-            ImportError: If the module cannot be imported
-            AttributeError: If the class is not found in the module
-        """
-        if self._model_class is not None:
-            return self._model_class
-            
-        module_path, class_name = self._get_model_class_path()
-        logger.debug("Importing {} from {}", class_name, module_path)
-        
-        try:
-            module = importlib.import_module(module_path)
-            self._model_class = getattr(module, class_name)
-            
-            logger.debug("Successfully imported: {}", self._model_class)
-            return self._model_class
-            
-        except ImportError as e:
-            logger.debug("Failed to import module {}: {}", module_path, e)
-            raise
-        except AttributeError as e:
-            logger.debug("Failed to find class {} in {}: {}", class_name, module_path, e)
-            raise
-    
-    def _detect_model_property(self, model_class) -> str:
-        """
-        Automatically detect the model property name via introspection.
-        
-        Examines the model class's Config TypedDict to determine the
-        correct property name for the model identifier.
-        
-        Args:
-            model_class: The model class to inspect
-            
-        Returns:
-            The detected model property name (defaults to 'model_id')
-            
-        Note:
-            This method looks for nested Config classes with TypedDict
-            annotations containing 'model_id' or 'model' properties.
-        """
-        if self._model_property is not None:
-            return self._model_property
-            
-        try:
-            # Look for nested Config class with annotations
-            for attr_name in dir(model_class):
-                attr = getattr(model_class, attr_name)
-                if (isinstance(attr, type) and 
-                    'Config' in attr_name and 
-                    hasattr(attr, '__annotations__')):
-                    
-                    annotations = getattr(attr, '__annotations__', {})
-                    
-                    # Check for common model property names
-                    for prop_name in ['model_id', 'model']:
-                        if prop_name in annotations:
-                            logger.debug("Detected model property: {} from {}", prop_name, attr_name)
-                            self._model_property = prop_name
-                            return prop_name
-            
-            # Fallback to most common default
-            logger.debug("No model property detected, using default: model_id")
-            self._model_property = 'model_id'
-            return self._model_property
-            
-        except Exception as e:
-            logger.debug("Error detecting model property: {}", e)
-            self._model_property = 'model_id'
-            return self._model_property
+        logger.debug("Initialized GenericFrameworkAdapter for: {}", self._framework_id)
     
     @property
     def framework_name(self) -> str:
         """
-        Get the framework name for this adapter.
+        Get the name of this framework.
         
         Returns:
-            str: Framework identifier for logging and debugging
+            str: Framework identifier
         """
-        return self.framework_id
+        return self._framework_id
     
-    def load_model(self, model_name: Optional[str] = None, model_config: Optional[Dict[str, Any]] = None) -> Model:
+    def _derive_import_paths(self) -> tuple[str, list[str]]:
         """
-        Load a model using fully dynamic discovery and instantiation.
+        Derive the module path and possible class names for the framework.
         
-        This method achieves complete automation by:
-        1. Dynamically importing the framework's model class
-        2. Auto-detecting the model property name via introspection
-        3. Setting the model identifier if provided
-        4. Passing all configuration (including client_args) directly to constructor
+        Uses standard strands naming conventions with variations:
+        - Module: strands.models.{framework}
+        - Class variations: 
+          1. {Framework}Model (e.g., "GeminiModel")
+          2. {FrameworkCamelCase}Model (e.g., "LlamaCppModel" for "llamacpp")
         
-        Args:
-            model_name: Model identifier (optional if in model_config)
-            model_config: Complete model configuration including client_args
-            
         Returns:
-            Configured strands Model instance
+            Tuple of (module_path, list_of_possible_class_names)
+            
+        Examples:
+            >>> adapter._derive_import_paths()  # framework_id = "gemini"
+            ("strands.models.gemini", ["GeminiModel"])
+            >>> adapter._derive_import_paths()  # framework_id = "llamacpp"  
+            ("strands.models.llamacpp", ["LlamacppModel", "LlamaCppModel"])
+        """
+        module_path = f"strands.models.{self._framework_id}"
+        
+        # Generate possible class name variations
+        class_names = []
+        
+        # Standard pattern: {Framework}Model
+        standard_name = f"{self._framework_id.capitalize()}Model"
+        class_names.append(standard_name)
+        
+        # Handle special cases with compound names (e.g., llamacpp -> LlamaCppModel)
+        if 'cpp' in self._framework_id:
+            # Handle cases like "llamacpp" -> "LlamaCppModel"
+            parts = self._framework_id.split('cpp')
+            if len(parts) == 2:
+                camel_case = f"{parts[0].capitalize()}Cpp{parts[1].capitalize()}Model"
+                class_names.append(camel_case)
+        
+        # Handle other compound patterns as needed
+        # Add more patterns here if discovered
+        
+        logger.debug("Derived paths: {} with class names: {}", module_path, class_names)
+        return module_path, class_names
+    
+    def _import_model_class(self):
+        """
+        Dynamically import the framework's strands model class.
+        
+        Returns:
+            The imported model class
             
         Raises:
-            ImportError: If the framework's model class cannot be imported
-            RuntimeError: If model instantiation fails
-            
-        Example:
-            Complete automation::
-            
-                config = {
-                    "temperature": 0.7,
-                    "max_tokens": 2000,
-                    "client_args": {
-                        "api_key": "your-key",
-                        "timeout": 60
-                    }
-                }
-                model = adapter.load_model("model-name", config)
-                
-        Note:
-            The client_args are passed directly to the constructor without
-            extraction, as all strands models accept this parameter.
+            ImportError: If the module cannot be imported
+            AttributeError: If the class cannot be found in the module
         """
-        logger.debug("Dynamic adapter loading model for {}", self.framework_id)
-        logger.debug("model_name: {}, model_config: {}", model_name, model_config)
-        
-        model_config = model_config or {}
+        module_path, class_names = self._derive_import_paths()
         
         try:
-            # 1. Dynamically import the model class
-            model_class = self._import_model_class()
+            logger.debug("Importing from {}", module_path)
+            module = importlib.import_module(module_path)
             
-            # 2. Auto-detect the model property name
-            model_property = self._detect_model_property(model_class)
+            # Try each possible class name
+            for class_name in class_names:
+                if hasattr(module, class_name):
+                    self._model_class = getattr(module, class_name)
+                    logger.debug("Successfully imported: {} as {}", class_name, self._model_class)
+                    return self._model_class
             
-            # 3. Set model identifier if provided
-            if model_name:
-                model_config[model_property] = model_name
-                logger.debug("Set {} = {}", model_property, model_name)
+            # If no class found, raise error
+            raise AttributeError(f"None of the expected classes {class_names} found in {module_path}")
+                
+        except ImportError as e:
+            logger.debug("Failed to import module {}: {}", module_path, e)
+            raise ImportError(f"Could not import {module_path}. Framework {self._framework_id} may not be supported in strands.models or dependencies missing") from e
+        except AttributeError as e:
+            logger.debug("Failed to find classes {} in {}: {}", class_names, module_path, e)
+            raise
+    
+    def _detect_model_property(self, model_class) -> str:
+        """
+        Detect the model configuration property name for the framework.
+        
+        Searches for common model property names in order of preference:
+        1. model_id (most common)
+        2. model 
+        3. model_name
+        4. name
+        
+        Args:
+            model_class: The imported model class to inspect
             
-            # 4. Pass everything directly to constructor (including client_args)
-            # No need to extract client_args - strands models handle it automatically
-            logger.debug("Creating {} with config: {}", model_class.__name__, model_config)
+        Returns:
+            The detected property name, defaults to "model_id" if none found
+        """
+        # Common model property names in order of preference
+        COMMON_MODEL_PROPERTIES = [
+            "model_id",
+            "model", 
+            "model_name",
+            "name"
+        ]
+        
+        try:
+            # Check class annotations first (most reliable)
+            if hasattr(model_class, '__annotations__'):
+                for prop_name in COMMON_MODEL_PROPERTIES:
+                    if prop_name in model_class.__annotations__:
+                        logger.debug("Detected model property: {} from annotations", prop_name)
+                        return prop_name
             
-            model = model_class(**model_config)
+            # Check nested config class annotations (common pattern in strands)
+            for attr_name in dir(model_class):
+                if attr_name.endswith('Config') and not attr_name.startswith('_'):
+                    config_class = getattr(model_class, attr_name)
+                    if hasattr(config_class, '__annotations__'):
+                        for prop_name in COMMON_MODEL_PROPERTIES:
+                            if prop_name in config_class.__annotations__:
+                                logger.debug("Detected model property: {} from {}", prop_name, attr_name)
+                                return prop_name
             
-            logger.debug("{} created successfully", model_class.__name__)
+            # Check class attributes as fallback
+            for prop_name in COMMON_MODEL_PROPERTIES:
+                for attr_name in dir(model_class):
+                    if attr_name == prop_name and not attr_name.startswith('_'):
+                        if hasattr(model_class, attr_name):
+                            logger.debug("Detected model property: {} from {}", prop_name, attr_name)
+                            return prop_name
+            
+            # Default fallback
+            logger.debug("No model property detected, using default: model_id")
+            return "model_id"
+            
+        except Exception as e:
+            logger.debug("Error detecting model property: {}", e)
+            return "model_id"
+    
+    def load_model(self, model_name: str, model_config: Optional[Dict[str, Any]] = None):
+        """
+        Load and configure a model for the framework.
+        
+        Uses dynamic discovery to:
+        1. Create the model configuration with the detected property name
+        2. Instantiate the model class with the configuration
+        
+        Args:
+            model_name: Name/identifier of the model to load
+            model_config: Optional additional configuration parameters
+            
+        Returns:
+            Configured model instance ready for use
+            
+        Example:
+            >>> adapter = GenericFrameworkAdapter("gemini")
+            >>> model = adapter.load_model("gemini-2.5-flash", {"temperature": 0.7})
+        """
+        if not self._model_class:
+            raise RuntimeError("Model class not available. Adapter may not be properly initialized.")
+        
+        if not self._model_property:
+            raise RuntimeError("Model property not detected. Adapter may not be properly initialized.")
+        
+        # Prepare model configuration
+        model_config = model_config or {}
+        
+        logger.debug("Dynamic adapter loading model for {}", self._framework_id)
+        logger.debug("model_name: {}, model_config: {}", model_name, model_config)
+        
+        # Set the model identifier using the detected property name
+        if self._model_property not in model_config:
+            model_config[self._model_property] = model_name
+            
+        # Handle special case where model_name is provided but property is different
+        if self._model_property != "model_name" and "model_name" in model_config:
+            if self._model_property not in model_config:
+                logger.debug("Set {} = {}", self._model_property, model_name)
+                model_config[self._model_property] = model_config["model_name"]
+        
+        try:
+            logger.debug("Creating {} with config: {}", self._model_class.__name__, model_config)
+            model = self._model_class(**model_config)
+            
+            logger.debug("{} created successfully", self._model_class.__name__)
             return model
             
         except Exception as e:
-            logger.error(f"Failed to load model for framework {self.framework_id}: {e}")
-            raise RuntimeError(f"Model loading failed for {self.framework_id}: {e}") from e
-    
-    def adapt_tools(self, tools: List[Tool], model_string: str) -> List[Tool]:
-        """
-        Adapt tools for framework compatibility.
-        
-        Uses the base class implementation by default. The dynamic nature
-        of this adapter makes framework-specific tool adaptations difficult
-        to implement generically.
-        
-        Args:
-            tools: List of tool objects to adapt
-            model_string: Model string for potential model-specific adaptations
-            
-        Returns:
-            List[Tool]: Adapted tools (unchanged by default)
-        """
-        logger.trace("GenericFrameworkAdapter.adapt_tools called for {}", self.framework_id)
-        return super().adapt_tools(tools, model_string)
+            raise RuntimeError(f"Failed to create {self._model_class.__name__} with config {model_config}") from e
 
 
 def can_handle_generically(framework_id: str) -> bool:
@@ -339,14 +336,14 @@ def create_generic_adapter(framework_id: str) -> Optional[GenericFrameworkAdapte
     """
     Create a dynamic generic adapter for any framework.
     
-    Factory function that creates and validates a GenericFrameworkAdapter
-    instance using fully dynamic discovery.
+    This function provides a safe way to create generic adapters with
+    proper error handling and logging.
     
     Args:
-        framework_id: Framework identifier
+        framework_id: Framework identifier to create adapter for
         
     Returns:
-        GenericFrameworkAdapter instance or None if creation fails
+        GenericFrameworkAdapter instance if successful, None if failed
         
     Example:
         >>> adapter = create_generic_adapter("gemini")
@@ -358,7 +355,7 @@ def create_generic_adapter(framework_id: str) -> Optional[GenericFrameworkAdapte
     """
     try:
         adapter = GenericFrameworkAdapter(framework_id)
-        logger.info(f"Created dynamic generic adapter for framework: {framework_id}")
+        logger.info("Created dynamic generic adapter for framework: {}", framework_id)
         return adapter
     except Exception as e:
         logger.error(f"Failed to create generic adapter for {framework_id}: {e}")

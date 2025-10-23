@@ -230,7 +230,7 @@ class ToolFactory:
                     logger.debug("Attempting to load function '{}' from module '{}' (package_path '{}')", func_spec, module_path, package_path)
                     tool = import_python_item(module_path, func_spec, package_path, base_path)
                 except (ImportError, AttributeError, FileNotFoundError) as e:
-                    logger.warn(f"Error loading function '{func_spec}' from module '{module_path}' (package_path '{package_path}')): {e}")
+                    logger.warning(f"Error loading function '{func_spec}' from module '{module_path}' (package_path '{package_path}')): {e}")
                     missing_functions.append(func_spec)
                     continue
 

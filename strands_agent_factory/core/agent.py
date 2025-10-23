@@ -2,6 +2,7 @@ import concurrent
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import ExitStack
 import sys
+import time
 from typing import Optional, List, Any
 
 from loguru import logger
@@ -65,7 +66,16 @@ class AgentProxy:
         # Initialize MCP servers concurrently
         futures_with_clients = []
         if mcp_clients:
+            start_time = time.perf_counter()
             self._exit_stack = ExitStack()
+            
+            # Register ALL clients for cleanup before initialization
+            for client in mcp_clients:
+                try:
+                    self._exit_stack.push(client.__exit__)
+                except Exception as e:
+                    logger.debug("Could not register cleanup for client {}: {}", getattr(client, 'server_id', 'unknown'), e)
+            
             with ThreadPoolExecutor(max_workers=self._max_threads) as executor:
                 for client in mcp_clients:
                     future = executor.submit(self._call_single_enter_safely, client)
@@ -78,20 +88,29 @@ class AgentProxy:
                 if not_done:
                     logger.warning("Some MCP server initializations were not done even though the 'wait for all' returned")
 
-                # Process results and register successful clients
+                # Process results and track only successful clients
                 for future, client in futures_with_clients:
                     try:
                         _resource = future.result()
-                        self._exit_stack.push(client.__exit__)
                         self._active_mcp_servers.append(client)
                         logger.debug("Successfully initialized MCP client: {}", client.server_id)
                     except Exception as e:
-                        logger.warn(f"MCP client initialization failed for {getattr(client, 'server_id', 'unknown')}: {e}")
+                        logger.warning(f"MCP client initialization failed for {getattr(client, 'server_id', 'unknown')}: {e}")
+                        # Cleanup already registered above
+
+            init_time = time.perf_counter() - start_time
+            logger.debug("MCP server initialization completed for {} servers in {:.2f}ms", 
+                        len(self._active_mcp_servers), init_time * 1000)
 
             # Collect tools from all active MCP servers
             for client in self._active_mcp_servers:
                 try:
-                    self._mcp_tools.extend(client.list_tools_sync());
+                    start_time = time.perf_counter()
+                    tools = client.list_tools_sync()
+                    self._mcp_tools.extend(tools)
+                    tool_time = time.perf_counter() - start_time
+                    logger.debug("Tool collection from MCP server '{}' completed: {} tools in {:.2f}ms", 
+                                client.server_id, len(tools), tool_time * 1000)
                 except Exception as e:
                     logger.error(f"MCP client tools listing failed for {getattr(client, 'server_id', 'unknown')}: {e}")
 
