@@ -137,28 +137,28 @@ class LiteLLMAdapter(FrameworkAdapter):
             client arguments. Client arguments are provider-specific and
             passed to the underlying provider's client constructor.
         """
-        logger.trace(f"LiteLLMAdapter.load_model called with model_name='{model_name}', model_config={model_config}")
+        logger.trace("LiteLLMAdapter.load_model called with model_name='{}', model_config={}", model_name, model_config)
         
         model_config = model_config or {}
-        logger.debug(f"Using model_config: {model_config}")
+        logger.debug("Using model_config: {}", model_config)
         
         # Set model identifier if provided - this must be at the top level for strands-agents
         if model_name:
             model_config["model_id"] = model_name
-            logger.debug(f"Set model_config['model_id'] to '{model_name}' at top level")
+            logger.debug("Set model_config['model_id'] to '{}' at top level", model_name)
             
         # Extract client-specific arguments
         client_args = model_config.pop("client_args", None)
-        logger.debug(f"Extracted client_args: {client_args}")
-        logger.debug(f"Final model_config after client_args extraction: {model_config}")
+        logger.debug("Extracted client_args: {}", client_args)
+        logger.debug("Final model_config after client_args extraction: {}", model_config)
         
         # Create the LiteLLM model - pass model_config directly, not nested
         # The LiteLLMModel constructor expects the config to be passed as model_config parameter
         # but strands-agents expects model_id to be accessible at the top level of model.config
-        logger.debug(f"Creating LiteLLMModel with client_args={client_args}, model_config={model_config}")
+        logger.debug("Creating LiteLLMModel with client_args={}, model_config={}", client_args, model_config)
         model = LiteLLMModel(client_args=client_args, **model_config)
         
-        logger.debug(f"LiteLLMModel created successfully: {type(model).__name__}")
+        logger.debug("LiteLLMModel created successfully: {}", type(model).__name__)
         return model
 
     def adapt_tools(self, tools: List[Tool], model_string: str) -> List[Tool]:
@@ -208,7 +208,8 @@ class LiteLLMAdapter(FrameworkAdapter):
                     }
                 }
         """
-        logger.trace(f"LiteLLMAdapter.adapt_tools called with {len(tools) if tools else 0} tools, model_string='{model_string}'")
+        if logger.level('TRACE').no >= logger._core.min_level:
+            logger.trace("LiteLLMAdapter.adapt_tools called with {} tools, model_string='{}'", len(tools) if tools else 0, model_string)
         
         # For LiteLLM, always clean additionalProperties regardless of underlying provider
         if tools:
@@ -217,11 +218,11 @@ class LiteLLMAdapter(FrameworkAdapter):
             for tool in tools:
                 if hasattr(tool, 'TOOL_SPEC'):
                     tool_name = getattr(tool, 'name', 'unnamed-tool')
-                    logger.trace(f"Cleaning TOOL_SPEC for tool: {tool_name}")
+                    logger.trace("Cleaning TOOL_SPEC for tool: {}", tool_name)
                     recursively_remove(tool.TOOL_SPEC, "additionalProperties")
                 elif hasattr(tool, '_tool_spec'):
                     tool_name = getattr(tool, 'name', 'unnamed-tool')
-                    logger.trace(f"Cleaning _tool_spec for tool: {tool_name}")
+                    logger.trace("Cleaning _tool_spec for tool: {}", tool_name)
                     recursively_remove(tool._tool_spec, "additionalProperties")
                 else:
                     # Handle module-based tools
@@ -230,10 +231,11 @@ class LiteLLMAdapter(FrameworkAdapter):
                         func = getattr(tool, func_name)
                         if hasattr(func, '_tool_spec'):
                             func_name_or_attr = getattr(func, 'name', func_name)
-                            logger.trace(f"Cleaning _tool_spec for tool: {func_name_or_attr}")
+                            logger.trace("Cleaning _tool_spec for tool: {}", func_name_or_attr)
                             recursively_remove(func._tool_spec, "additionalProperties")
         else:
             logger.debug("No tools to adapt")
 
-        logger.trace(f"Tool adaptation completed, returning {len(tools) if tools else 0} tools")
+        if logger.level('TRACE').no >= logger._core.min_level:
+            logger.trace("Tool adaptation completed, returning {} tools", len(tools) if tools else 0)
         return tools

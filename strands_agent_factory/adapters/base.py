@@ -143,16 +143,18 @@ class FrameworkAdapter(ABC):
             may have specific requirements for tool schemas. This method
             provides an extension point for model-specific adaptations.
         """
-        logger.trace(f"FrameworkAdapter.adapt_tools called with {len(tools) if tools else 0} tools, model_string='{model_string}'")
+        if logger.level('TRACE').no >= logger._core.min_level:
+            logger.trace("FrameworkAdapter.adapt_tools called with {} tools, model_string='{}'", len(tools) if tools else 0, model_string)
         
         # FrameworkAdapter tool support varies by model - for now, pass through unchanged
         if tools:
             logger.debug("FrameworkAdapter adapter: Tools passed through without modification")
-            logger.debug(f"Note: Tool support varies across models. Model '{model_string}' may have limited tool capabilities.")
+            logger.debug("Note: Tool support varies across models. Model '{}' may have limited tool capabilities.", model_string)
         else:
             logger.debug("No tools to adapt")
         
-        logger.trace(f"Tool adaptation completed, returning {len(tools) if tools else 0} tools")
+        if logger.level('TRACE').no >= logger._core.min_level:
+            logger.trace("Tool adaptation completed, returning {} tools", len(tools) if tools else 0)
         return tools
     
     def prepare_agent_args(
@@ -188,7 +190,8 @@ class FrameworkAdapter(ABC):
             System prompt emulation is used for frameworks that don't support
             system prompts natively. The prompt is prepended to the first user message.
         """
-        logger.trace(f"FrameworkAdapter.prepare_agent_args called with system_prompt={system_prompt is not None}, messages={len(messages) if messages else 0}, emulate_system_prompt={emulate_system_prompt}, kwargs={list(kwargs.keys())}")
+        if logger.level('TRACE').no >= logger._core.min_level:
+            logger.trace("FrameworkAdapter.prepare_agent_args called with system_prompt={}, messages={}, emulate_system_prompt={}, kwargs={}", system_prompt is not None, len(messages) if messages else 0, emulate_system_prompt, list(kwargs.keys()))
         
         messages = messages or []
         
@@ -209,7 +212,7 @@ class FrameworkAdapter(ABC):
         # Add any additional kwargs
         agent_args.update(kwargs)
         
-        logger.debug(f"prepare_agent_args returning keys: {list(agent_args.keys())}")
+        logger.debug("prepare_agent_args returning keys: {}", list(agent_args.keys()))
         return agent_args
 
     def adapt_content(self, content: Messages) -> Messages:
@@ -230,7 +233,7 @@ class FrameworkAdapter(ABC):
             Override this method if your framework requires specific
             content transformations (e.g., format conversion, filtering).
         """
-        logger.trace(f"FrameworkAdapter.adapt_content called with content type: {type(content)}")
+        logger.trace("FrameworkAdapter.adapt_content called with content type: {}", type(content))
         return content
 
     # ========================================================================
@@ -256,7 +259,7 @@ class FrameworkAdapter(ABC):
             Override this method if your framework requires async setup.
             Called during factory initialization before model loading.
         """
-        logger.trace(f"FrameworkAdapter.initialize called with model='{model}', model_config={model_config}")
+        logger.trace("FrameworkAdapter.initialize called with model='{}', model_config={}", model, model_config)
         logger.debug("FrameworkAdapter.initialize: No initialization required, returning True")
         return True
 
@@ -353,23 +356,23 @@ def load_framework_adapter(adapter_name: str) -> FrameworkAdapter:
         are only created if the framework follows standard patterns and
         has required dependencies available.
     """
-    logger.debug(f"Loading framework adapter: {adapter_name}")
+    logger.debug("Loading framework adapter: {}", adapter_name)
     
     if not adapter_name or not isinstance(adapter_name, str):
         raise ConfigurationError(f"Invalid adapter name: {adapter_name}")
     
     # 1. Try explicit adapter first (highest priority)
     if adapter_name in FRAMEWORK_HANDLERS:
-        logger.debug(f"Using explicit adapter for {adapter_name}")
+        logger.debug("Using explicit adapter for {}", adapter_name)
         try:
             return _load_explicit_adapter(adapter_name)
         except Exception as e:
             raise AdapterError(f"Failed to load explicit adapter for {adapter_name}") from e
     
     # 2. Try generic adapter (automatic support)
-    logger.debug(f"Checking generic adapter support for {adapter_name}")
+    logger.debug("Checking generic adapter support for {}", adapter_name)
     if _can_handle_generically(adapter_name):
-        logger.debug(f"Using generic adapter for {adapter_name}")
+        logger.debug("Using generic adapter for {}", adapter_name)
         try:
             return _create_generic_adapter(adapter_name)
         except Exception as e:
@@ -398,16 +401,16 @@ def _load_explicit_adapter(adapter_name: str) -> FrameworkAdapter:
     """
     try:
         class_path = FRAMEWORK_HANDLERS[adapter_name]
-        logger.debug(f"Found explicit adapter class path: {class_path}")
+        logger.debug("Found explicit adapter class path: {}", class_path)
         
         module_path, class_name = class_path.rsplit('.', 1)
-        logger.debug(f"Importing module: {module_path}, class: {class_name}")
+        logger.debug("Importing module: {}, class: {}", module_path, class_name)
         
         module = importlib.import_module(module_path)
         adapter_class = getattr(module, class_name)
         adapter = adapter_class()
         
-        logger.debug(f"Successfully created explicit adapter: {type(adapter).__name__}")
+        logger.debug("Successfully created explicit adapter: {}", type(adapter).__name__)
         return adapter
         
     except Exception as e:
@@ -435,7 +438,7 @@ def _can_handle_generically(framework_id: str) -> bool:
         logger.error(f"Generic adapter module not available: {e}")
         return False
     except Exception as e:
-        logger.debug(f"Generic adapter validation failed for {framework_id}: {e}")
+        logger.debug("Generic adapter validation failed for {}: {}", framework_id, e)
         return False
 
 

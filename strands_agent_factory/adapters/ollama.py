@@ -146,27 +146,27 @@ class OllamaAdapter(FrameworkAdapter):
             instances. Ollama client arguments are passed directly to the
             underlying Ollama client for advanced configuration.
         """
-        logger.trace(f"OllamaAdapter.load_model called with model_name='{model_name}', model_config={model_config}")
+        logger.trace("OllamaAdapter.load_model called with model_name='{}', model_config={}", model_name, model_config)
         
         model_config = model_config or {}
-        logger.debug(f"Using model_config: {model_config}")
+        logger.debug("Using model_config: {}", model_config)
         
         # Set model name if provided
         if model_name:
             model_config["model"] = model_name
-            logger.debug(f"Set model_config['model'] to '{model_name}'")
+            logger.debug("Set model_config['model'] to '{}'", model_name)
         
         # Extract Ollama-specific configuration
         host = model_config.pop("host", "127.0.0.1:11434")
         ollama_client_args = model_config.pop("ollama_client_args", None)
         
-        logger.debug(f"Using host: {host}")
-        logger.debug(f"Extracted ollama_client_args: {ollama_client_args}")
-        logger.debug(f"Final model_config after extraction: {model_config}")
+        logger.debug("Using host: {}", host)
+        logger.debug("Extracted ollama_client_args: {}", ollama_client_args)
+        logger.debug("Final model_config after extraction: {}", model_config)
         
         # Create and return the Ollama model
-        logger.debug(f"Creating OllamaModel with host={host}, ollama_client_args={ollama_client_args}, model_config={model_config}")
+        logger.debug("Creating OllamaModel with host={}, ollama_client_args={}, model_config={}", host, ollama_client_args, model_config)
         model = OllamaModel(host=host, ollama_client_args=ollama_client_args, model_config=model_config)
         
-        logger.debug(f"OllamaModel created successfully: {type(model).__name__}")
+        logger.debug("OllamaModel created successfully: {}", type(model).__name__)
         return model

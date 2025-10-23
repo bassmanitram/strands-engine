@@ -44,7 +44,7 @@ class MCPClient(StrandsMCPClient):
     """Enhanced strands MCPClient with filtering and server identification."""
     
     def __init__(self, server_id: str, transport_callable: Callable, requested_functions: Optional[List[str]] = None):
-        logger.trace(f"MCPClient.__init__ called with server_id='{server_id}', requested_functions={requested_functions}")
+        logger.trace("MCPClient.__init__ called with server_id='{}', requested_functions={}", server_id, requested_functions)
         
         if not _STRANDS_MCP_AVAILABLE:
             logger.error("MCP dependencies not installed")
@@ -54,16 +54,16 @@ class MCPClient(StrandsMCPClient):
         self.requested_functions = requested_functions or []
         super().__init__(transport_callable)
         
-        logger.trace(f"MCPClient.__init__ completed for server_id='{server_id}'")
+        logger.trace("MCPClient.__init__ completed for server_id='{}'", server_id)
     
     def list_tools_sync(self, pagination_token: Optional[str] = None):
         """List tools with optional filtering by requested_functions."""
-        logger.trace(f"list_tools_sync called with pagination_token={pagination_token}, requested_functions={self.requested_functions}")
+        logger.trace("list_tools_sync called with pagination_token={}, requested_functions={}", pagination_token, self.requested_functions)
         
         all_tools = super().list_tools_sync(pagination_token)
         
         if not self.requested_functions:
-            logger.debug(f"list_tools_sync returning {len(all_tools) if all_tools else 0} unfiltered tools")
+            logger.debug("list_tools_sync returning {} unfiltered tools", len(all_tools) if all_tools else 0)
             return all_tools
             
         # Filter tools by requested function names
@@ -76,7 +76,7 @@ class MCPClient(StrandsMCPClient):
             else:
                 logger.warning(f"Function '{requested_func}' not found on MCP server '{self.server_id}'")
         
-        logger.debug(f"list_tools_sync returning {len(filtered_tools)} filtered tools")
+        logger.debug("list_tools_sync returning {} filtered tools", len(filtered_tools))
         return filtered_tools
 
 
@@ -99,12 +99,14 @@ class ToolFactory:
         Args:
             file_paths: List of paths to tool configuration files
         """
-        logger.trace(f"ToolFactory.__init__ called with {len(file_paths) if file_paths else 0} file paths")
+        if logger.level('TRACE').no >= logger._core.min_level:
+            logger.trace("ToolFactory.__init__ called with {} file paths", len(file_paths) if file_paths else 0)
         
         # Load configurations at construction time
         self._tool_configs, self._tool_discovery_results = self._load_tool_configs(file_paths) if file_paths else ([], None)
         
-        logger.trace(f"ToolFactory.__init__ completed with {len(self._tool_configs)} tool configs loaded")
+        if logger.level('TRACE').no >= logger._core.min_level:
+            logger.trace("ToolFactory.__init__ completed with {} tool configs loaded", len(self._tool_configs))
 
     def create_tool_specs(self) -> Tuple[Optional[ToolDiscoveryResult], List[ToolSpecCreationResult]]:
         """
@@ -115,7 +117,8 @@ class ToolFactory:
             - ToolDiscoveryResult: Discovery statistics (None if no configs)
             - List[ToolSpecCreationResult]: Results from each tool spec creation attempt
         """
-        logger.trace(f"create_tool_specs called with {len(self._tool_configs)} tool configs")
+        if logger.level('TRACE').no >= logger._core.min_level:
+            logger.trace("create_tool_specs called with {} tool configs", len(self._tool_configs))
         
         if not self._tool_configs:
             logger.debug("create_tool_specs returning empty results (no configs)")
@@ -129,7 +132,7 @@ class ToolFactory:
                 logger.info(f"Skipping disabled tool: {tool_config.get('id', 'unknown')}")
                 continue
                 
-            logger.debug(f"Creating tool spec for config: {tool_config.get('id', 'unknown')}")
+            logger.debug("Creating tool spec for config: {}", tool_config.get('id', 'unknown'))
             
             try:
                 result = self.create_tool_spec_from_config(tool_config)
@@ -144,7 +147,7 @@ class ToolFactory:
                 ))
                 logger.warning(message)
         
-        logger.debug(f"create_tool_specs returning {len(creation_results)} results")
+        logger.debug("create_tool_specs returning {} results", len(creation_results))
         return (self._tool_discovery_results, creation_results)
 
     def create_tool_spec_from_config(self, config: Dict[str, Any]) -> ToolSpecCreationResult:
@@ -162,7 +165,7 @@ class ToolFactory:
         tool_type = config.get("type")
         tool_id = config.get("id", "unknown")
         
-        logger.trace(f"create_tool_spec_from_config called for type='{tool_type}', id='{tool_id}'")
+        logger.trace("create_tool_spec_from_config called for type='{}', id='{}'", tool_type, tool_id)
 
         # Direct dispatch to tool type handlers
         if tool_type == "python":
@@ -177,13 +180,13 @@ class ToolFactory:
                 error=f"Unknown tool type '{tool_type}'"
             )
         
-        logger.debug(f"create_tool_spec_from_config returning result for '{tool_id}': error={result.error}")
+        logger.debug("create_tool_spec_from_config returning result for '{}': error={}", tool_id, result.error)
         return result
 
     def _create_python_tool_spec(self, config: Dict[str, Any]) -> ToolSpecCreationResult:
         """Create Python tool specification directly."""
         tool_id = config.get("id", "unknown-python-tool")
-        logger.trace(f"_create_python_tool_spec called for tool_id='{tool_id}'")
+        logger.trace("_create_python_tool_spec called for tool_id='{}'", tool_id)
         
         # Extract configuration
         module_path = config.get("module_path")
@@ -191,7 +194,7 @@ class ToolFactory:
         package_path = config.get("package_path")
         src_file = config.get("source_file")
         
-        logger.debug(f"Python tool spec: id={tool_id}, module_path={module_path}, functions={func_names}")
+        logger.debug("Python tool spec: id={}, module_path={}, functions={}", tool_id, module_path, func_names)
         
         # Validate required configuration
         if not all([tool_id, module_path, func_names, src_file]):
@@ -207,7 +210,7 @@ class ToolFactory:
         base_path = None
         if package_path and src_file:
             base_path = Path(src_file).parent
-            logger.debug(f"Using base path from source file: {base_path}")
+            logger.debug("Using base path from source file: {}", base_path)
         
         loaded_tools = []
         
@@ -224,7 +227,7 @@ class ToolFactory:
                     continue
 
                 try:
-                    logger.debug(f"Attempting to load function '{func_spec}' from module '{module_path}' (package_path '{package_path}')")
+                    logger.debug("Attempting to load function '{}' from module '{}' (package_path '{}')", func_spec, module_path, package_path)
                     tool = import_python_item(module_path, func_spec, package_path, base_path)
                 except (ImportError, AttributeError, FileNotFoundError) as e:
                     logger.warn(f"Error loading function '{func_spec}' from module '{module_path}' (package_path '{package_path}')): {e}")
@@ -235,7 +238,7 @@ class ToolFactory:
                 clean_function_name = func_spec.split('.')[-1]
                 loaded_tools.append(tool)
                 found_functions.append(clean_function_name)
-                logger.debug(f"Successfully loaded callable '{func_spec}' as '{clean_function_name}' from module '{module_path}'")
+                logger.debug("Successfully loaded callable '{}' as '{}' from module '{}'", func_spec, clean_function_name, module_path)
 
             logger.info(f"Successfully loaded {len(loaded_tools)} tools from Python module: {tool_id}")
 
@@ -274,7 +277,7 @@ class ToolFactory:
                 error=error_msg
             )
         
-        logger.debug(f"_create_python_tool_spec returning for '{tool_id}': error={result.error}")
+        logger.debug("_create_python_tool_spec returning for '{}': error={}", tool_id, result.error)
         return result
 
     def _create_mcp_tool_spec(self, config: Dict[str, Any]) -> ToolSpecCreationResult:
@@ -282,7 +285,7 @@ class ToolFactory:
         server_id = config.get("id", "unknown-mcp-server")
         functions = config.get("functions", [])
         
-        logger.trace(f"_create_mcp_tool_spec called for server_id='{server_id}', functions={functions}")
+        logger.trace("_create_mcp_tool_spec called for server_id='{}', functions={}", server_id, functions)
         
         # Check MCP dependencies
         if not _STRANDS_MCP_AVAILABLE:
@@ -293,7 +296,7 @@ class ToolFactory:
                 requested_functions=functions,
                 error=error_msg
             )
-            logger.debug(f"_create_mcp_tool_spec returning for '{server_id}': error={result.error}")
+            logger.debug("_create_mcp_tool_spec returning for '{}': error={}", server_id, result.error)
             return result
         
         # Auto-detect transport and create transport callable
@@ -313,7 +316,7 @@ class ToolFactory:
                     requested_functions=functions,
                     error=error_msg
                 )
-                logger.debug(f"_create_mcp_tool_spec returning for '{server_id}': error={result.error}")
+                logger.debug("_create_mcp_tool_spec returning for '{}': error={}", server_id, result.error)
                 return result
         except ImportError as e:
             error_msg = f"MCP transport dependencies not available: {e}"
@@ -323,7 +326,7 @@ class ToolFactory:
                 requested_functions=functions,
                 error=error_msg
             )
-            logger.debug(f"_create_mcp_tool_spec returning for '{server_id}': error={result.error}")
+            logger.debug("_create_mcp_tool_spec returning for '{}': error={}", server_id, result.error)
             return result
         
         # Create client and tool spec
@@ -333,12 +336,12 @@ class ToolFactory:
         logger.info(f"Created MCP tool spec for server: {server_id}")
         result = ToolSpecCreationResult(tool_spec=tool_spec, requested_functions=functions, error=None)
         
-        logger.debug(f"_create_mcp_tool_spec returning for '{server_id}': error={result.error}")
+        logger.debug("_create_mcp_tool_spec returning for '{}': error={}", server_id, result.error)
         return result
 
     def _create_stdio_transport(self, config: Dict[str, Any]) -> Callable:
         """Create stdio transport callable."""
-        logger.trace(f"_create_stdio_transport called with command='{config.get('command')}'")
+        logger.trace("_create_stdio_transport called with command='{}'", config.get('command'))
         
         from mcp import StdioServerParameters
         from mcp.client.stdio import stdio_client
@@ -347,7 +350,7 @@ class ToolFactory:
         env = os.environ.copy()
         if 'env' in config:
             env.update(config['env'])
-            logger.debug(f"Updated environment with {len(config['env'])} variables")
+            logger.debug("Updated environment with {} variables", len(config['env']))
         
         params = StdioServerParameters(
             command=config["command"],
@@ -362,7 +365,7 @@ class ToolFactory:
     def _create_http_transport(self, config: Dict[str, Any]) -> Callable:
         """Create HTTP transport callable."""
         url = config["url"]
-        logger.trace(f"_create_http_transport called with url='{url}'")
+        logger.trace("_create_http_transport called with url='{}'", url)
         
         from mcp.client.streamable_http import streamablehttp_client
         
@@ -380,13 +383,14 @@ class ToolFactory:
         Returns:
             Tuple[List[ToolConfig], ToolDiscoveryResult]: Successfully loaded configs and discovery stats
         """
-        logger.trace(f"_load_tool_configs called with {len(file_paths)} file paths")
+        if logger.level('TRACE').no >= logger._core.min_level:
+            logger.trace("_load_tool_configs called with {} file paths", len(file_paths))
         
         path_list = file_paths or []
         successful_configs: List[ToolConfig] = []
         failed_configs: List[Dict[str, Any]] = []
 
-        logger.debug(f"Loading {len(path_list)} tool configuration files...")
+        logger.debug("Loading {} tool configuration files...", len(path_list))
 
         for file_path in path_list:
             try:
@@ -417,5 +421,5 @@ class ToolFactory:
         )
 
         logger.info(f"Tool discovery complete: {len(successful_configs)} successful, {len(failed_configs)} failed from {len(path_list)} files")
-        logger.debug(f"_load_tool_configs returning {len(successful_configs)} successful configs")
+        logger.debug("_load_tool_configs returning {} successful configs", len(successful_configs))
         return successful_configs, discovery_result

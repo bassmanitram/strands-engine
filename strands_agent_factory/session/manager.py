@@ -66,7 +66,7 @@ class DelegatingSession(SessionManager):
     """
 
     def __init__(self, session_name: Optional[str], sessions_home: Optional[str | Path] = None):
-        logger.trace(f"DelegatingSession.__init__ called with session_name={session_name}, sessions_home={sessions_home}")
+        logger.trace("DelegatingSession.__init__ called with session_name={}, sessions_home={}", session_name, sessions_home)
         """
         Initialize the session proxy.
         
@@ -98,10 +98,10 @@ class DelegatingSession(SessionManager):
         
         if session_name:
             logger.info(f"DelegatingSession configured for session '{session_name}' (will activate when agent available)")
-            logger.debug(f"Sessions stored in: {self._sessions_home}")
+            logger.debug("Sessions stored in: {}", self._sessions_home)
         else:
             logger.info("DelegatingSession configured as inactive (will ignore session operations)")
-            logger.debug(f"Sessions home available at: {self._sessions_home}")
+            logger.debug("Sessions home available at: {}", self._sessions_home)
 
     def set_active_session(self, session_name: str) -> None:
         """
@@ -144,7 +144,7 @@ class DelegatingSession(SessionManager):
                 # Clear any existing session data and start fresh
                 session_path = Path(self._sessions_home) / f"session_{session_name}"
                 if session_path.exists():
-                    logger.debug(f"Backing up incompatible session data to {session_path}.backup")
+                    logger.debug("Backing up incompatible session data to {}.backup", session_path)
                     backup_path = Path(str(session_path) + ".backup")
                     if backup_path.exists():
                         shutil.rmtree(backup_path)
@@ -274,7 +274,7 @@ class DelegatingSession(SessionManager):
         """
         if self._active_session:
             self._active_session.append_message(message, agent, **kwargs)
-            logger.debug(f"Appended message to session '{self.session_id}'")
+            logger.debug("Appended message to session '{}'", self.session_id)
         else:
             logger.debug("Session inactive - ignoring message append")
 
@@ -292,7 +292,7 @@ class DelegatingSession(SessionManager):
         """
         if self._active_session:
             self._active_session.redact_latest_message(redact_message, agent, **kwargs)
-            logger.debug(f"Redacted latest message in session '{self.session_id}'")
+            logger.debug("Redacted latest message in session '{}'", self.session_id)
         else:
             logger.debug("Session inactive - ignoring message redaction")
 
@@ -309,7 +309,7 @@ class DelegatingSession(SessionManager):
         """
         if self._active_session:
             self._active_session.sync_agent(agent)
-            logger.debug(f"Synced agent state with session '{self.session_id}'")
+            logger.debug("Synced agent state with session '{}'", self.session_id)
         else:
             logger.debug("Session inactive - ignoring agent sync")
 

@@ -74,7 +74,7 @@ class GenericFrameworkAdapter(FrameworkAdapter):
         self._model_class = None
         self._model_property = None
         
-        logger.debug(f"Initialized GenericFrameworkAdapter for: {self.framework_id}")
+        logger.debug("Initialized GenericFrameworkAdapter for: {}", self.framework_id)
     
     def _get_model_class_path(self) -> tuple[str, str]:
         """
@@ -94,7 +94,7 @@ class GenericFrameworkAdapter(FrameworkAdapter):
         module_path = f"strands.models.{self.framework_id}"
         class_name = f"{self.framework_id.capitalize()}Model"
         
-        logger.debug(f"Derived paths: {module_path}.{class_name}")
+        logger.debug("Derived paths: {}.{}", module_path, class_name)
         return module_path, class_name
     
     def _import_model_class(self):
@@ -112,20 +112,20 @@ class GenericFrameworkAdapter(FrameworkAdapter):
             return self._model_class
             
         module_path, class_name = self._get_model_class_path()
-        logger.debug(f"Importing {class_name} from {module_path}")
+        logger.debug("Importing {} from {}", class_name, module_path)
         
         try:
             module = importlib.import_module(module_path)
             self._model_class = getattr(module, class_name)
             
-            logger.debug(f"Successfully imported: {self._model_class}")
+            logger.debug("Successfully imported: {}", self._model_class)
             return self._model_class
             
         except ImportError as e:
-            logger.debug(f"Failed to import module {module_path}: {e}")
+            logger.debug("Failed to import module {}: {}", module_path, e)
             raise
         except AttributeError as e:
-            logger.debug(f"Failed to find class {class_name} in {module_path}: {e}")
+            logger.debug("Failed to find class {} in {}: {}", class_name, module_path, e)
             raise
     
     def _detect_model_property(self, model_class) -> str:
@@ -161,7 +161,7 @@ class GenericFrameworkAdapter(FrameworkAdapter):
                     # Check for common model property names
                     for prop_name in ['model_id', 'model']:
                         if prop_name in annotations:
-                            logger.debug(f"Detected model property: {prop_name} from {attr_name}")
+                            logger.debug("Detected model property: {} from {}", prop_name, attr_name)
                             self._model_property = prop_name
                             return prop_name
             
@@ -171,7 +171,7 @@ class GenericFrameworkAdapter(FrameworkAdapter):
             return self._model_property
             
         except Exception as e:
-            logger.debug(f"Error detecting model property: {e}")
+            logger.debug("Error detecting model property: {}", e)
             self._model_property = 'model_id'
             return self._model_property
     
@@ -223,8 +223,8 @@ class GenericFrameworkAdapter(FrameworkAdapter):
             The client_args are passed directly to the constructor without
             extraction, as all strands models accept this parameter.
         """
-        logger.debug(f"Dynamic adapter loading model for {self.framework_id}")
-        logger.debug(f"model_name: {model_name}, model_config: {model_config}")
+        logger.debug("Dynamic adapter loading model for {}", self.framework_id)
+        logger.debug("model_name: {}, model_config: {}", model_name, model_config)
         
         model_config = model_config or {}
         
@@ -238,15 +238,15 @@ class GenericFrameworkAdapter(FrameworkAdapter):
             # 3. Set model identifier if provided
             if model_name:
                 model_config[model_property] = model_name
-                logger.debug(f"Set {model_property} = {model_name}")
+                logger.debug("Set {} = {}", model_property, model_name)
             
             # 4. Pass everything directly to constructor (including client_args)
             # No need to extract client_args - strands models handle it automatically
-            logger.debug(f"Creating {model_class.__name__} with config: {model_config}")
+            logger.debug("Creating {} with config: {}", model_class.__name__, model_config)
             
             model = model_class(**model_config)
             
-            logger.debug(f"{model_class.__name__} created successfully")
+            logger.debug("{} created successfully", model_class.__name__)
             return model
             
         except Exception as e:
@@ -268,7 +268,7 @@ class GenericFrameworkAdapter(FrameworkAdapter):
         Returns:
             List[Tool]: Adapted tools (unchanged by default)
         """
-        logger.trace(f"GenericFrameworkAdapter.adapt_tools called for {self.framework_id}")
+        logger.trace("GenericFrameworkAdapter.adapt_tools called for {}", self.framework_id)
         return super().adapt_tools(tools, model_string)
 
 
@@ -303,7 +303,7 @@ def can_handle_generically(framework_id: str) -> bool:
     }
     
     if framework_id in REQUIRES_CUSTOM_ADAPTER:
-        logger.debug(f"Framework {framework_id} requires custom adapter")
+        logger.debug("Framework {} requires custom adapter", framework_id)
         return False
     
     try:
@@ -318,20 +318,20 @@ def can_handle_generically(framework_id: str) -> bool:
         
         # Verify it's actually a strands Model
         if not issubclass(model_class, Model):
-            logger.debug(f"Class {model_class} is not a strands Model")
+            logger.debug("Class {} is not a strands Model", model_class)
             return False
         
         # Additional validation: check if we can detect model property
         model_property = test_adapter._detect_model_property(model_class)
         if not model_property:
-            logger.debug(f"Could not detect model property for {framework_id}")
+            logger.debug("Could not detect model property for {}", framework_id)
             return False
         
-        logger.debug(f"Framework {framework_id} can be handled generically")
+        logger.debug("Framework {} can be handled generically", framework_id)
         return True
         
     except Exception as e:
-        logger.debug(f"Framework {framework_id} cannot be handled generically: {e}")
+        logger.debug("Framework {} cannot be handled generically: {}", framework_id, e)
         return False
 
 

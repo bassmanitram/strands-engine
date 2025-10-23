@@ -135,29 +135,29 @@ class BedrockAdapter(FrameworkAdapter):
             the boto3 client constructor. This includes authentication,
             region, and other AWS SDK configuration options.
         """
-        logger.trace(f"BedrockAdapter.load_model called with model_name='{model_name}', model_config={model_config}")
+        logger.trace("BedrockAdapter.load_model called with model_name='{}', model_config={}", model_name, model_config)
         
         model_config = model_config or {}
-        logger.debug(f"Using model_config: {model_config}")
+        logger.debug("Using model_config: {}", model_config)
         
         # Set model identifier if provided
         if model_name:
             model_config["model_id"] = model_name
-            logger.debug(f"Set model_config['model_id'] to '{model_name}'")
+            logger.debug("Set model_config['model_id'] to '{}'", model_name)
         
         # Extract AWS boto client configuration
         boto_client_config = model_config.pop("boto_client_config", None)
         if boto_client_config:
             boto_client_config = BotocoreConfig(**boto_client_config)
 
-        logger.debug(f"Extracted boto_client_config: {boto_client_config}")
-        logger.debug(f"Final model_config after boto_client_config extraction: {model_config}")
+        logger.debug("Extracted boto_client_config: {}", boto_client_config)
+        logger.debug("Final model_config after boto_client_config extraction: {}", model_config)
         
         # Create and return the Bedrock model
-        logger.debug(f"Creating BedrockModel with boto_client_config={boto_client_config}, model_config={model_config}")
+        logger.debug("Creating BedrockModel with boto_client_config={}, model_config={}", boto_client_config, model_config)
         model = BedrockModel(boto_client_config=boto_client_config, **model_config)
         
-        logger.debug(f"BedrockModel created successfully: {type(model).__name__}")
+        logger.debug("BedrockModel created successfully: {}", type(model).__name__)
         return model
 
     def adapt_content(self, messages: Messages) -> Messages:
@@ -204,12 +204,13 @@ class BedrockAdapter(FrameworkAdapter):
                 # Output: Bedrock-compliant format
                 adapted = adapter.adapt_content(messages)
         """
-        logger.trace(f"BedrockAdapter.adapt_content called with {len(messages)} messages")
+        if logger.level('TRACE').no >= logger._core.min_level:
+            logger.trace("BedrockAdapter.adapt_content called with {} messages", len(messages))
         
         transformed_messages = []
 
         for message_idx, message in enumerate(messages):
-            logger.trace(f"Processing message {message_idx}: {message.get('role', 'unknown')}")
+            logger.trace("Processing message {}: {}", message_idx, message.get('role', 'unknown'))
             
             content = message.get("content")
             if not isinstance(content, list):
@@ -222,7 +223,7 @@ class BedrockAdapter(FrameworkAdapter):
             transformed_content = []
 
             for block_idx, block in enumerate(content):
-                logger.trace(f"Processing content block {block_idx}: {type(block)}")
+                logger.trace("Processing content block {}: {}", block_idx, type(block))
                 
                 if not isinstance(block, dict):
                     logger.trace("Skipping non-dict block")
@@ -232,7 +233,8 @@ class BedrockAdapter(FrameworkAdapter):
                 if block.get("type") == "text" or "text" in block:
                     text_content = block.get("text", "")
                     transformed_content.append({"text": text_content})
-                    logger.trace(f"Added text block with {len(text_content)} characters")
+                    if logger.level('TRACE').no >= logger._core.min_level:
+                        logger.trace("Added text block with {} characters", len(text_content))
                     continue
 
                 # Case 2: Handle image blocks in the 'strands' format
@@ -243,13 +245,13 @@ class BedrockAdapter(FrameworkAdapter):
                     if image_format in VALID_IMAGE_FORMATS and source.get("data"):
                         # Valid image format, pass through
                         transformed_content.append(block)
-                        logger.trace(f"Added valid image block with format: {image_format}")
+                        logger.trace("Added valid image block with format: {}", image_format)
                     else:
                         # Invalid or unsupported format, create placeholder
                         logger.warning(f"File with media type '{image_format}' is not a supported image format for Bedrock. Representing as a text placeholder.")
                         placeholder_text = f"[User uploaded a binary file of type '{image_format}' that cannot be displayed.]"
                         transformed_content.append({"text": placeholder_text})
-                        logger.trace(f"Added placeholder for unsupported format: {image_format}")
+                        logger.trace("Added placeholder for unsupported format: {}", image_format)
                     continue
             
             # Update message content if we have transformed blocks
@@ -257,7 +259,9 @@ class BedrockAdapter(FrameworkAdapter):
                 new_message = message.copy()
                 new_message["content"] = transformed_content
                 transformed_messages.append(new_message)
-                logger.trace(f"Added transformed message with {len(transformed_content)} content blocks")
+                if logger.level('TRACE').no >= logger._core.min_level:
+                    logger.trace("Added transformed message with {} content blocks", len(transformed_content))
 
-        logger.trace(f"Content adaptation completed, returning {len(transformed_messages)} messages")
+        if logger.level('TRACE').no >= logger._core.min_level:
+            logger.trace("Content adaptation completed, returning {} messages", len(transformed_messages))
         return transformed_messages

@@ -24,11 +24,13 @@ def clean_dict(d: Dict[str, Any]) -> Dict[str, Any]:
     Returns:
         New dictionary with None values removed
     """
-    logger.trace(f"clean_dict called with dict containing {len(d)} items")
+    if logger.level('TRACE').no >= logger._core.min_level:
+        logger.trace("clean_dict called with dict containing {} items", len(d))
     
     result = {k: v for k, v in d.items() if v is not None}
     
-    logger.trace(f"clean_dict completed, returning dict with {len(result)} items")
+    if logger.level('TRACE').no >= logger._core.min_level:
+        logger.trace("clean_dict completed, returning dict with {} items", len(result))
     return result
 
 
@@ -53,7 +55,7 @@ def print_structured_data(data: Any, indent_level: int = 0, initial_max_len: int
         For non-dictionary top-level data, prints the value directly without key prefix.
         Recursive calls automatically increase indentation and reduce truncation length.
     """
-    logger.trace(f"print_structured_data called with data type: {type(data).__name__}, indent_level: {indent_level}, initial_max_len: {initial_max_len}")
+    logger.trace("print_structured_data called with data type: {}, indent_level: {}, initial_max_len: {}", type(data).__name__, indent_level, initial_max_len)
     
     indent_str = "  " * indent_level
 
@@ -67,7 +69,7 @@ def print_structured_data(data: Any, indent_level: int = 0, initial_max_len: int
 
     def _format_and_print_value(value_to_format: Any, prefix: str = ""):
         """Format and print a single value according to the formatting rules."""
-        logger.trace(f"_format_and_print_value called with value type: {type(value_to_format).__name__}, prefix: '{prefix}'")
+        logger.trace("_format_and_print_value called with value type: {}, prefix: '{}'", type(value_to_format).__name__, prefix)
         
         if value_to_format is None:
             printer(f"{indent_str}{prefix}None")

@@ -53,12 +53,12 @@ def guess_mimetype(file_path: PathLike) -> str:
     Returns:
         str: MIME type string, defaults to 'application/octet-stream'
     """
-    logger.trace(f"guess_mimetype called with file_path='{file_path}'")
+    logger.trace("guess_mimetype called with file_path='{}'", file_path)
     
     mimetype, _ = mimetypes.guess_type(str(file_path))
     result = mimetype or 'application/octet-stream'
     
-    logger.debug(f"guess_mimetype returning: {result}")
+    logger.debug("guess_mimetype returning: {}", result)
     return result
 
 
@@ -75,13 +75,13 @@ def is_likely_text_file(file_path: PathLike) -> bool:
     Returns:
         bool: True if the file is likely text, False otherwise
     """
-    logger.trace(f"is_likely_text_file called with file_path='{file_path}'")
+    logger.trace("is_likely_text_file called with file_path='{}'", file_path)
     
     path = Path(file_path)
 
     # Check if file exists and is a regular file
     if not path.exists() or not path.is_file():
-        logger.debug(f"is_likely_text_file returning False (file does not exist or not regular file)")
+        logger.debug("is_likely_text_file returning False (file does not exist or not regular file)")
         return False
 
     # Common text file extensions
@@ -97,7 +97,7 @@ def is_likely_text_file(file_path: PathLike) -> bool:
 
     # Check extension
     if path.suffix.lower() in text_extensions:
-        logger.debug(f"is_likely_text_file returning True (known text extension: {path.suffix.lower()})")
+        logger.debug("is_likely_text_file returning True (known text extension: {})", path.suffix.lower())
         return True
 
     # Check for files without extensions that are commonly text
@@ -107,13 +107,13 @@ def is_likely_text_file(file_path: PathLike) -> bool:
             'dockerfile', 'jenkinsfile', 'vagrantfile', 'gemfile', 'rakefile', 'procfile'
         }
         if path.name.lower() in common_text_names:
-            logger.debug(f"is_likely_text_file returning True (common text filename: {path.name.lower()})")
+            logger.debug("is_likely_text_file returning True (common text filename: {})", path.name.lower())
             return True
 
     # For small files, do a quick binary check
     try:
         if path.stat().st_size > 1024 * 1024:  # Skip files larger than 1MB
-            logger.debug(f"is_likely_text_file returning False (file too large: {path.stat().st_size} bytes)")
+            logger.debug("is_likely_text_file returning False (file too large: {} bytes)", path.stat().st_size)
             return False
 
         with open(path, 'rb') as f:
@@ -121,13 +121,13 @@ def is_likely_text_file(file_path: PathLike) -> bool:
 
         # Check for null bytes (common in binary files)
         if b'\x00' in chunk:
-            logger.debug(f"is_likely_text_file returning False (null bytes found)")
+            logger.debug("is_likely_text_file returning False (null bytes found)")
             return False
 
         # Check if most bytes are printable ASCII or common UTF-8
         try:
             chunk.decode('utf-8')
-            logger.debug(f"is_likely_text_file returning True (valid UTF-8)")
+            logger.debug("is_likely_text_file returning True (valid UTF-8)")
             return True
         except UnicodeDecodeError:
             # Try to decode as latin-1 (more permissive)
@@ -137,14 +137,14 @@ def is_likely_text_file(file_path: PathLike) -> bool:
                 printable_count = sum(1 for b in chunk if 32 <= b <= 126 or b in (9, 10, 13))
                 ratio = printable_count / len(chunk)
                 result = ratio > 0.7
-                logger.debug(f"is_likely_text_file returning {result} (printable ratio: {ratio:.2f})")
+                logger.debug("is_likely_text_file returning {} (printable ratio: {})", result, ratio)
                 return result
             except UnicodeDecodeError:
-                logger.debug(f"is_likely_text_file returning False (decode failed)")
+                logger.debug("is_likely_text_file returning False (decode failed)")
                 return False
 
     except (OSError, IOError) as e:
-        logger.debug(f"is_likely_text_file returning False (IO error: {e})")
+        logger.debug("is_likely_text_file returning False (IO error: {})", e)
         return False
 
 
@@ -161,7 +161,8 @@ def paths_to_file_references(file_paths: List[Tuple[PathLike, Optional[str]]]) -
     Returns:
         List[str]: List of file() reference strings
     """
-    logger.trace(f"paths_to_file_references called with {len(file_paths)} file paths")
+    if logger.level('TRACE').no >= logger._core.min_level:
+        logger.trace("paths_to_file_references called with {} file paths", len(file_paths))
     
     if not file_paths:
         logger.debug("paths_to_file_references returning empty list (no file paths)")
@@ -180,7 +181,7 @@ def paths_to_file_references(file_paths: List[Tuple[PathLike, Optional[str]]]) -
         
         references.append(ref)
     
-    logger.debug(f"paths_to_file_references returning {len(references)} references")
+    logger.debug("paths_to_file_references returning {} references", len(references))
     return references
 
 
@@ -199,13 +200,13 @@ def recursively_remove(obj: Union[Dict[str, Any], List[Any]], key_to_remove: str
         obj: Dictionary or list to process (modified in-place)
         key_to_remove: Key to remove from all nested dictionaries
     """
-    logger.trace(f"recursively_remove called with obj type={type(obj).__name__}, key_to_remove='{key_to_remove}'")
+    logger.trace("recursively_remove called with obj type={}, key_to_remove='{}'", type(obj).__name__, key_to_remove)
     
     if isinstance(obj, dict):
         # Remove the key if it exists
         if key_to_remove in obj:
             del obj[key_to_remove]
-            logger.trace(f"Removed key '{key_to_remove}' from dict")
+            logger.trace("Removed key '{}' from dict", key_to_remove)
         
         # Recursively process all values
         for value in obj.values():
@@ -216,7 +217,7 @@ def recursively_remove(obj: Union[Dict[str, Any], List[Any]], key_to_remove: str
         for item in obj:
             recursively_remove(item, key_to_remove)
     
-    logger.trace(f"recursively_remove completed for key '{key_to_remove}'")
+    logger.trace("recursively_remove completed for key '{}'", key_to_remove)
 
 
 # ============================================================================
@@ -251,7 +252,7 @@ def load_structured_file(file_path: PathLike, file_format: str = 'auto') -> Dict
         json.JSONDecodeError: If JSON parsing fails
         ValueError: If unsupported file format
     """
-    logger.trace(f"load_structured_file called with file_path='{file_path}', file_format='{file_format}'")
+    logger.trace("load_structured_file called with file_path='{}', file_format='{}'", file_path, file_format)
     
     path = Path(file_path)
     if not path.exists():
@@ -260,13 +261,13 @@ def load_structured_file(file_path: PathLike, file_format: str = 'auto') -> Dict
 
     if file_format == 'auto':
         file_format = 'yaml' if path.suffix.lower() in ('.yaml', '.yml') else 'json'
-        logger.debug(f"Auto-detected file format: {file_format}")
+        logger.debug("Auto-detected file format: {}", file_format)
 
     try:
         with open(path, 'r', encoding='utf-8') as f:
             result = _FILE_PARSER[file_format](f)
             result = result if result is not None else {}
-            logger.debug(f"load_structured_file returning config with {len(result)} top-level keys")
+            logger.debug("load_structured_file returning config with {} top-level keys", len(result))
             return result
     except yaml.YAMLError as e:
         error_msg = f"Invalid YAML in {file_path}: {e}"
@@ -301,7 +302,7 @@ def load_file_content(file_path: PathLike, content_type: str = 'auto') -> Union[
         FileNotFoundError: If file doesn't exist
         OSError: If file cannot be read
     """
-    logger.trace(f"load_file_content called with file_path='{file_path}', content_type='{content_type}'")
+    logger.trace("load_file_content called with file_path='{}', content_type='{}'", file_path, content_type)
     
     path = Path(file_path)
     if not path.exists():
@@ -310,18 +311,18 @@ def load_file_content(file_path: PathLike, content_type: str = 'auto') -> Union[
 
     if content_type == 'auto':
         content_type = 'text' if is_likely_text_file(path) else 'binary'
-        logger.debug(f"Auto-detected content type: {content_type}")
+        logger.debug("Auto-detected content type: {}", content_type)
 
     try:
         if content_type == "text":
             with open(path, 'r', errors='replace') as f:
                 content = f.read()
-                logger.debug(f"load_file_content returning text content ({len(content)} chars)")
+                logger.debug("load_file_content returning text content ({} chars)", len(content))
                 return content
         else:
             with open(path, 'rb') as f:
                 content = f.read()
-                logger.debug(f"load_file_content returning binary content ({len(content)} bytes)")
+                logger.debug("load_file_content returning binary content ({} bytes)", len(content))
                 return content
     except OSError as e:
         error_msg = f"Error reading file {file_path}: {e}"
@@ -343,7 +344,7 @@ def generate_file_content_block(file_path: Path, mimetype: str) -> Optional[Dict
     Returns:
         Optional[Dict[str, Any]]: Content block or None if processing failed
     """
-    logger.trace(f"generate_file_content_block called with file_path='{file_path}', mimetype='{mimetype}'")
+    logger.trace("generate_file_content_block called with file_path='{}', mimetype='{}'", file_path, mimetype)
     
     # Skip files that exceed the size limit
     if file_path.stat().st_size > MAX_FILE_SIZE_BYTES:
@@ -360,7 +361,7 @@ def generate_file_content_block(file_path: Path, mimetype: str) -> Optional[Dict
     likely_text = is_likely_text_file(file_path)
     file_bytes = load_file_content(file_path, 'binary')
     
-    logger.debug(f"File analysis: mimetype={detected_mimetype}, format={format}, likely_text={likely_text}, size={len(file_bytes)}")
+    logger.debug("File analysis: mimetype={}, format={}, likely_text={}, size={}", detected_mimetype, format, likely_text, len(file_bytes))
     
     # Video files
     if detected_mimetype.startswith("video/"):
@@ -436,7 +437,8 @@ def files_to_content_blocks(
     Returns:
         List[Dict[str, Any]]: List of content blocks ready for agent consumption
     """
-    logger.trace(f"files_to_content_blocks called with {len(files)} files, max_files={max_files}")
+    if logger.level('TRACE').no >= logger._core.min_level:
+        logger.trace("files_to_content_blocks called with {} files, max_files={}", len(files), max_files)
     
     if not files:
         logger.debug("files_to_content_blocks returning empty list (no files)")
@@ -447,7 +449,7 @@ def files_to_content_blocks(
 
     for file_path_str, mimetype in files:
         if max_files and processed_count >= max_files:
-            logger.debug(f"Reached max_files limit ({max_files}), stopping processing")
+            logger.debug("Reached max_files limit ({}), stopping processing", max_files)
             break
 
         file_path = Path(file_path_str)
@@ -458,5 +460,5 @@ def files_to_content_blocks(
             content_blocks.append(file_block)
             processed_count += 1
 
-    logger.debug(f"files_to_content_blocks returning {len(content_blocks)} content blocks")
+    logger.debug("files_to_content_blocks returning {} content blocks", len(content_blocks))
     return content_blocks

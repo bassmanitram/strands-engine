@@ -71,7 +71,7 @@ class AgentFactory:
         Args:
             config: AgentFactoryConfig instance with agent parameters
         """
-        logger.trace(f"AgentFactory.__init__ called with config: {config}")
+        logger.trace("AgentFactory.__init__ called with config: {}", config)
         
         self.config = config
         self._initialized = False
@@ -96,8 +96,8 @@ class AgentFactory:
         # Set up callback handler based on configuration
         self._setup_callback_handler()
 
-        logger.debug(f"Factory created with config: {config}")
-        logger.debug(f"Parsed model string '{config.model}' -> framework='{self._framework_name}', model_id='{self._model_id}'")
+        logger.debug("Factory created with config: {}", config)
+        logger.debug("Parsed model string '{}' -> framework='{}', model_id='{}'", config.model, self._framework_name, self._model_id)
         logger.trace("AgentFactory.__init__ completed")
     
     def _setup_callback_handler(self) -> None:
@@ -108,7 +108,7 @@ class AgentFactory:
         creates a ConfigurableCallbackHandler with the configured
         show_tool_use and response_prefix settings.
         """
-        logger.trace(f"_setup_callback_handler called with callback_handler={self.config.callback_handler is not None}")
+        logger.trace("_setup_callback_handler called with callback_handler={}", self.config.callback_handler is not None)
         
         if self.config.callback_handler is not None:
             self._callback_handler = self.config.callback_handler
@@ -118,7 +118,7 @@ class AgentFactory:
                 show_tool_use=self.config.show_tool_use,
                 response_prefix=self.config.response_prefix
             )
-            logger.debug(f"Created ConfigurableCallbackHandler with show_tool_use={self.config.show_tool_use}, response_prefix='{self.config.response_prefix}'")
+            logger.debug("Created ConfigurableCallbackHandler with show_tool_use={}, response_prefix='{}'", self.config.show_tool_use, self.config.response_prefix)
         
         logger.trace("_setup_callback_handler completed")
     
@@ -139,7 +139,7 @@ class AgentFactory:
         Returns:
             Tuple[str, str]: (framework_name, model_id) where model_id can be empty
         """
-        logger.trace(f"_parse_model_string called with model_string: '{model_string}'")
+        logger.trace("_parse_model_string called with model_string: '{}'", model_string)
         
         if ":" in model_string:
             # Format like "framework:model_id" or "framework:" (empty model_id)
@@ -149,7 +149,7 @@ class AgentFactory:
             # Default to OpenAI for simple model names like "gpt-4o"
             result = ("openai", model_string)
         
-        logger.debug(f"_parse_model_string returning: {result}")
+        logger.debug("_parse_model_string returning: {}", result)
         return result
     
     async def initialize(self) -> None:
@@ -166,7 +166,7 @@ class AgentFactory:
             ToolLoadError: If tool loading fails
             ConfigurationError: If configuration is invalid
         """
-        logger.trace(f"initialize called, _initialized={self._initialized}")
+        logger.trace("initialize called, _initialized={}", self._initialized)
         
         if self._initialized:
             logger.debug("Factory already initialized")
@@ -207,13 +207,13 @@ class AgentFactory:
         Raises:
             ToolLoadError: If tool loading fails
         """
-        logger.trace(f"_load_tools_specs called with tool_config_paths: {self.config.tool_config_paths}")
+        logger.trace("_load_tools_specs called with tool_config_paths: {}", self.config.tool_config_paths)
         
         if not self.config.tool_config_paths:
             logger.debug("No tool config paths provided, skipping tool loading")
             return
             
-        logger.debug(f"Loading tool specs from {len(self.config.tool_config_paths)} config paths")
+        logger.debug("Loading tool specs from {} config paths", len(self.config.tool_config_paths))
         
         try:
             # Create tool factory with paths
@@ -237,7 +237,8 @@ class AgentFactory:
                 for failed_spec in failed_specs:
                     logger.warning(f"  - {failed_spec.error}")
             
-            logger.trace(f"_load_tools_specs completed with {len(self._loaded_tool_specs)} tool specs loaded")
+            if logger.level('TRACE').no >= logger._core.min_level:
+                logger.trace("_load_tools_specs completed with {} tool specs loaded", len(self._loaded_tool_specs))
             
         except Exception as e:
             raise ToolLoadError(f"Failed to load tool specifications: {e}") from e
@@ -249,7 +250,7 @@ class AgentFactory:
         Raises:
             ConfigurationError: If file paths are invalid
         """
-        logger.trace(f"_build_initial_messages called with file_paths: {self.config.file_paths}; initial_message: {self.config.initial_message}")
+        logger.trace("_build_initial_messages called with file_paths: {}; initial_message: {}", self.config.file_paths, self.config.initial_message)
 
         if not (self.config.file_paths or self.config.initial_message):
             logger.debug("No file paths or initial message provided, skipping initial message creation")
@@ -261,7 +262,8 @@ class AgentFactory:
 
             self._initial_messages = generate_llm_messages("\n".join([initial_message] + startup_files_references))
 
-            logger.trace(f"_build_initial_messages completed with {len(self._initial_messages) if self._initial_messages else 0} messages created")
+            if logger.level('TRACE').no >= logger._core.min_level:
+                logger.trace("_build_initial_messages completed with {} messages created", len(self._initial_messages) if self._initial_messages else 0)
             
         except Exception as e:
             raise ConfigurationError(f"Failed to build initial messages: {e}") from e
@@ -277,11 +279,11 @@ class AgentFactory:
         Raises:
             AdapterError: If the framework is not supported or adapter initialization fails
         """
-        logger.trace(f"_setup_framework_adapter called with framework_name: '{self._framework_name}'")
+        logger.trace("_setup_framework_adapter called with framework_name: '{}'", self._framework_name)
         
         try:
             self._framework_adapter = load_framework_adapter(self._framework_name)
-            logger.debug(f"Framework adapter loaded successfully: {type(self._framework_adapter).__name__}")
+            logger.debug("Framework adapter loaded successfully: {}", type(self._framework_adapter).__name__)
             logger.trace("_setup_framework_adapter completed")
             
         except Exception as e:
@@ -298,11 +300,11 @@ class AgentFactory:
         Raises:
             ConfigurationError: If conversation manager configuration is invalid
         """
-        logger.trace(f"_setup_conversation_manager called with conversation_manager_type: {self.config.conversation_manager_type}")
+        logger.trace("_setup_conversation_manager called with conversation_manager_type: {}", self.config.conversation_manager_type)
         
         try:
             self._conversation_manager = ConversationManagerFactory.create_conversation_manager(self.config)
-            logger.debug(f"Conversation manager created: {type(self._conversation_manager).__name__}")
+            logger.debug("Conversation manager created: {}", type(self._conversation_manager).__name__)
         except Exception as e:
             # Log as warn - trace not needed
             logger.warning(f"Failed to create conversation manager: {e}")
@@ -333,7 +335,7 @@ class AgentFactory:
             ModelLoadError: If model loading fails
             AdapterError: If framework adapter is not available
         """
-        logger.trace(f"create_agent called, _initialized={self._initialized}, _framework_adapter={self._framework_adapter is not None}")
+        logger.trace("create_agent called, _initialized={}, _framework_adapter={}", self._initialized, self._framework_adapter is not None)
         
         if not self._initialized:
             raise InitializationError("Cannot create agent: factory not initialized. Call initialize() first.")
@@ -344,23 +346,23 @@ class AgentFactory:
         try:
             # Pass the parsed model_id (without framework prefix) to the adapter
             # The model_id can be empty string if the format was "framework:"
-            logger.debug(f"Loading model with model_id='{self._model_id}', model_config={self.config.model_config}")
+            logger.debug("Loading model with model_id='{}', model_config={}", self._model_id, self.config.model_config)
             model = self._framework_adapter.load_model(self._model_id, self.config.model_config)
             if not model: 
                 raise ModelLoadError("Framework adapter returned None for model")
             
-            logger.debug(f"Model loaded successfully: {type(model).__name__}")
+            logger.debug("Model loaded successfully: {}", type(model).__name__)
 
             # Allow the adapter to make any necessary modifications to the tool schemas
-            logger.debug(f"Preparing agent args with system_prompt={self.config.system_prompt is not None}, emulate_system_prompt={self.config.emulate_system_prompt}")
+            logger.debug("Preparing agent args with system_prompt={}, emulate_system_prompt={}", self.config.system_prompt is not None, self.config.emulate_system_prompt)
             agent_args = self._framework_adapter.prepare_agent_args(
                 system_prompt=self.config.system_prompt,
                 emulate_system_prompt=self.config.emulate_system_prompt,
                 messages=self._initial_messages
             )
-            logger.debug(f"Agent args prepared: {list(agent_args.keys())}")
+            logger.debug("Agent args prepared: {}", list(agent_args.keys()))
 
-            logger.debug(f"Creating AgentProxy with {len(self._loaded_tool_specs)} tools")
+            logger.debug("Creating AgentProxy with {} tools", len(self._loaded_tool_specs))
             proxy_agent = AgentProxy(
                 self._framework_adapter,
                 self._loaded_tool_specs,
@@ -371,7 +373,7 @@ class AgentFactory:
                 conversation_manager=self._conversation_manager,
                 **agent_args
             )
-            logger.debug(f"AgentProxy created successfully: {type(proxy_agent).__name__}")
+            logger.debug("AgentProxy created successfully: {}", type(proxy_agent).__name__)
             logger.trace("create_agent completed successfully")
             return proxy_agent
             

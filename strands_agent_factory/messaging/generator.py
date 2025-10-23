@@ -37,11 +37,12 @@ def generate_llm_messages(input_string: str) -> List[Dict[str, Any]]:
     Returns:
         List containing single user message dict with content blocks
     """
-    logger.trace(f"generate_llm_messages called with input length: {len(input_string)}")
+    if logger.level('TRACE').no >= logger._core.min_level:
+        logger.trace("generate_llm_messages called with input length: {}", len(input_string))
     
     # Parse file references and text segments
     file_refs = _parse_file_references(input_string)
-    logger.debug(f"Found {len(file_refs)} file references")
+    logger.debug("Found {} file references", len(file_refs))
     
     # Build content blocks in order
     content_blocks = []
@@ -53,14 +54,15 @@ def generate_llm_messages(input_string: str) -> List[Dict[str, Any]]:
             text_segment = input_string[last_end:start_pos].strip()
             if text_segment:
                 content_blocks.append(_create_text_content_block(text_segment))
-                logger.trace(f"Added text block: {text_segment[:50]}...")
+                if logger.level('TRACE').no >= logger._core.min_level:
+                    logger.trace("Added text block: {}...", text_segment[:50])
         
         # Resolve file glob and create file content blocks
         file_paths = _resolve_file_glob(glob_pattern, mimetype)
         if file_paths:
             file_blocks = _create_file_content_blocks(file_paths)
             content_blocks.extend(file_blocks)
-            logger.debug(f"Added {len(file_blocks)} file blocks from glob: {glob_pattern}")
+            logger.debug("Added {} file blocks from glob: {}", len(file_blocks), glob_pattern)
         else:
             # Add explanatory text if no files resolved
             error_text = f"No files found matching pattern: {glob_pattern}"
@@ -74,7 +76,8 @@ def generate_llm_messages(input_string: str) -> List[Dict[str, Any]]:
         text_segment = input_string[last_end:].strip()
         if text_segment:
             content_blocks.append(_create_text_content_block(text_segment))
-            logger.trace(f"Added final text block: {text_segment[:50]}...")
+            if logger.level('TRACE').no >= logger._core.min_level:
+                logger.trace("Added final text block: {}...", text_segment[:50])
     
     # If no content blocks were created, add the entire input as text
     if not content_blocks:
@@ -89,7 +92,7 @@ def generate_llm_messages(input_string: str) -> List[Dict[str, Any]]:
         "content": content_blocks
     }
     
-    logger.debug(f"generate_llm_messages returning message with {len(content_blocks)} content blocks")
+    logger.debug("generate_llm_messages returning message with {} content blocks", len(content_blocks))
     return [message]
 
 
@@ -107,7 +110,8 @@ def _parse_file_references(text: str) -> List[Tuple[str, Optional[str], int, int
         List of tuples: (glob_pattern, mimetype, start_pos, end_pos)
         where mimetype is None if not specified
     """
-    logger.trace(f"_parse_file_references called with text length: {len(text)}")
+    if logger.level('TRACE').no >= logger._core.min_level:
+        logger.trace("_parse_file_references called with text length: {}", len(text))
     
     # Regex pattern to match file('glob'[,mimetype])
     # Supports both single and double quotes, optional mimetype
@@ -121,9 +125,9 @@ def _parse_file_references(text: str) -> List[Tuple[str, Optional[str], int, int
         end_pos = match.end()
         
         file_refs.append((glob_pattern, mimetype, start_pos, end_pos))
-        logger.trace(f"Parsed file reference: glob='{glob_pattern}', mimetype='{mimetype}'")
+        logger.trace("Parsed file reference: glob='{}', mimetype='{}'", glob_pattern, mimetype)
     
-    logger.debug(f"_parse_file_references returning {len(file_refs)} file references")
+    logger.debug("_parse_file_references returning {} file references", len(file_refs))
     return file_refs
 
 
@@ -142,12 +146,12 @@ def _resolve_file_glob(glob_pattern: str, mimetype: Optional[str]) -> List[Tuple
     Returns:
         List of (filepath, mimetype) tuples for existing files
     """
-    logger.trace(f"_resolve_file_glob called with glob_pattern='{glob_pattern}', mimetype='{mimetype}'")
+    logger.trace("_resolve_file_glob called with glob_pattern='{}', mimetype='{}'", glob_pattern, mimetype)
     
     try:
         # Resolve glob pattern
         matched_paths = glob.glob(glob_pattern, recursive=True)
-        logger.debug(f"Glob matched {len(matched_paths)} paths")
+        logger.debug("Glob matched {} paths", len(matched_paths))
         
         # Filter to existing files only
         existing_files = []
@@ -155,11 +159,11 @@ def _resolve_file_glob(glob_pattern: str, mimetype: Optional[str]) -> List[Tuple
             path_obj = Path(path)
             if path_obj.exists() and path_obj.is_file():
                 existing_files.append((str(path_obj.resolve()), mimetype))
-                logger.trace(f"Resolved file: {path_obj.resolve()}")
+                logger.trace("Resolved file: {}", path_obj.resolve())
             else:
                 logger.warning(f"File does not exist or is not a file: {path}")
         
-        logger.debug(f"_resolve_file_glob returning {len(existing_files)} existing files")
+        logger.debug("_resolve_file_glob returning {} existing files", len(existing_files))
         return existing_files
         
     except Exception as e:
@@ -177,7 +181,8 @@ def _create_text_content_block(text: str) -> Dict[str, str]:
     Returns:
         Dict with text content block format: {"text": "..."}
     """
-    logger.trace(f"_create_text_content_block called with text length: {len(text)}")
+    if logger.level('TRACE').no >= logger._core.min_level:
+        logger.trace("_create_text_content_block called with text length: {}", len(text))
     
     result = {"text": text}
     
@@ -198,13 +203,14 @@ def _create_file_content_blocks(file_paths: List[Tuple[str, Optional[str]]]) -> 
     Returns:
         List of content blocks (mix of file blocks and error text blocks)
     """
-    logger.trace(f"_create_file_content_blocks called with {len(file_paths)} file paths")
+    if logger.level('TRACE').no >= logger._core.min_level:
+        logger.trace("_create_file_content_blocks called with {} file paths", len(file_paths))
     
     content_blocks = []
     
     for file_path, mimetype in file_paths:
         try:
-            logger.debug(f"Creating content block for file: {file_path} (mimetype: {mimetype})")
+            logger.debug("Creating content block for file: {} (mimetype: {})", file_path, mimetype)
             
             path_obj = Path(file_path)
             # Use mimetype from glob or detect automatically (pass None to let utils handle it)
@@ -212,7 +218,7 @@ def _create_file_content_blocks(file_paths: List[Tuple[str, Optional[str]]]) -> 
             
             if file_block:
                 content_blocks.append(file_block)
-                logger.trace(f"Successfully created content block for: {file_path}")
+                logger.trace("Successfully created content block for: {}", file_path)
             else:
                 # generate_file_content_block returned None due to error
                 error_text = f"Failed to process file: {file_path}"
@@ -225,5 +231,5 @@ def _create_file_content_blocks(file_paths: List[Tuple[str, Optional[str]]]) -> 
             logger.error(error_text)
             content_blocks.append(_create_text_content_block(f"[{error_text}]"))
     
-    logger.debug(f"_create_file_content_blocks returning {len(content_blocks)} content blocks") 
+    logger.debug("_create_file_content_blocks returning {} content blocks", len(content_blocks)) 
     return content_blocks

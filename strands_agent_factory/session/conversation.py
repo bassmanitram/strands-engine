@@ -66,7 +66,7 @@ class ConversationManagerFactory:
         Returns:
             ConversationManager: Configured conversation manager instance
         """
-        logger.trace(f"create_conversation_manager called with type: {config.conversation_manager_type}")
+        logger.trace("create_conversation_manager called with type: {}", config.conversation_manager_type)
         
         try:
             if config.conversation_manager_type == "null":
@@ -119,14 +119,14 @@ class ConversationManagerFactory:
                 raise ValueError("Unknown conversation manager type: "
                                  f"{config.conversation_manager_type}")
 
-            logger.debug(f"create_conversation_manager returning: {type(result).__name__}")
+            logger.debug("create_conversation_manager returning: {}", type(result).__name__)
             return result
 
         except Exception as e:
             logger.error(f"Failed to create conversation manager: {e}")
             logger.info("Falling back to NullConversationManager")
             result = NullConversationManager()
-            logger.debug(f"create_conversation_manager returning fallback: {type(result).__name__}")
+            logger.debug("create_conversation_manager returning fallback: {}", type(result).__name__)
             return result
 
     @staticmethod
@@ -145,10 +145,10 @@ class ConversationManagerFactory:
         Returns:
             Optional[Agent]: Configured summarization agent, or None if creation fails
         """
-        logger.trace(f"_create_summarization_agent called with model_string: {model_string}")
+        logger.trace("_create_summarization_agent called with model_string: {}", model_string)
         
         try:
-            logger.debug(f"Loading summarization model: {model_string}")
+            logger.debug("Loading summarization model: {}", model_string)
 
             # Parse model string - expect format like "framework:model_id"
             if ':' not in model_string:

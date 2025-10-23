@@ -40,7 +40,7 @@ def import_python_item(
 
     try:
         full_module_path, item_name = full_item_path.rsplit('.', 1)
-        logger.debug(f"Loading item '{item_name}' from module '{full_module_path}' (base_path='{base_path}, package_path='{package_path}')")
+        logger.debug("Loading item '{}' from module '{}' (base_path='{}, package_path='{}')", item_name, full_module_path, base_path, package_path)
     except ValueError as e:
         raise ValueError(f"Invalid path '{full_item_path}'.") from e
 

@@ -26,7 +26,8 @@ class AgentProxy:
             tool_specs: List of tool specifications including MCP server clients
             **kwargs: Arguments to pass to Agent constructor during __enter__
         """
-        logger.trace(f"AgentProxy.__init__ called with {len(tool_specs)} tool specs")
+        if logger.level('TRACE').no >= logger._core.min_level:
+            logger.trace("AgentProxy.__init__ called with {} tool specs", len(tool_specs))
         
         self._adapter = adapter
         self._tool_specs = tool_specs or []
@@ -46,7 +47,8 @@ class AgentProxy:
         self._exit_stack = None
         self._active_mcp_servers = []
         
-        logger.trace(f"AgentProxy.__init__ completed - {len(self._mcp_server_specs)} MCP servers, {len(self._tools)} regular tools")
+        if logger.level('TRACE').no >= logger._core.min_level:
+            logger.trace("AgentProxy.__init__ completed - {} MCP servers, {} regular tools", len(self._mcp_server_specs), len(self._tools))
 
     def __enter__(self):
         """Initialize MCP servers and create the underlying Agent.
@@ -54,7 +56,8 @@ class AgentProxy:
         Returns:
             self: The proxy instance for use in the context manager
         """
-        logger.trace(f"AgentProxy.__enter__ called with {len(self._mcp_server_specs)} MCP server specs")
+        if logger.level('TRACE').no >= logger._core.min_level:
+            logger.trace("AgentProxy.__enter__ called with {} MCP server specs", len(self._mcp_server_specs))
         
         # Extract MCP clients from tool specs
         mcp_clients = [spec["client"] for spec in self._mcp_server_specs]
@@ -81,7 +84,7 @@ class AgentProxy:
                         _resource = future.result()
                         self._exit_stack.push(client.__exit__)
                         self._active_mcp_servers.append(client)
-                        logger.debug(f"Successfully initialized MCP client: {client.server_id}")
+                        logger.debug("Successfully initialized MCP client: {}", client.server_id)
                     except Exception as e:
                         logger.warn(f"MCP client initialization failed for {getattr(client, 'server_id', 'unknown')}: {e}")
 
@@ -96,7 +99,8 @@ class AgentProxy:
         self._context_entered = True
         self._agent = Agent(tools=(self._tools + self._mcp_tools), **self._agent_kwargs)
 
-        logger.trace(f"AgentProxy.__enter__ completed with {len(self._active_mcp_servers)} active MCP servers")
+        if logger.level('TRACE').no >= logger._core.min_level:
+            logger.trace("AgentProxy.__enter__ completed with {} active MCP servers", len(self._active_mcp_servers))
         return self
     
     def _call_single_enter_safely(self, manager):
@@ -108,7 +112,7 @@ class AgentProxy:
         Returns:
             Result from the manager's __enter__ method
         """
-        logger.trace(f"_call_single_enter_safely called for manager type: {type(manager).__name__}")
+        logger.trace("_call_single_enter_safely called for manager type: {}", type(manager).__name__)
         
         result = manager.__enter__()
         
@@ -126,7 +130,7 @@ class AgentProxy:
         Returns:
             bool: False to propagate any exceptions
         """
-        logger.trace(f"AgentProxy.__exit__ called with exc_type={exc_type}")
+        logger.trace("AgentProxy.__exit__ called with exc_type={}", exc_type)
         
         # Clean up agent first to prevent access during MCP cleanup
         self._context_entered = False
@@ -153,7 +157,7 @@ class AgentProxy:
         Returns:
             bool: True if message was processed successfully, False on error
         """
-        logger.trace(f"_handle_agent_stream called with message type: {type(message)}")
+        logger.trace("_handle_agent_stream called with message type: {}", type(message))
         self._ensure_agent_available()
         
         if not message:
@@ -190,7 +194,7 @@ class AgentProxy:
         Returns:
             bool: True if message was processed successfully, False on error
         """
-        logger.trace(f"send_message_to_agent called with message type: {type(message)}, show_user_input: {show_user_input}")
+        logger.trace("send_message_to_agent called with message type: {}, show_user_input: {}", type(message), show_user_input)
         self._ensure_agent_available()
         
         if show_user_input:
@@ -198,7 +202,7 @@ class AgentProxy:
 
         result = await self._handle_agent_stream(message)
         
-        logger.debug(f"send_message_to_agent returning: {result}")
+        logger.debug("send_message_to_agent returning: {}", result)
         return result
     
     def _ensure_agent_available(self):
@@ -228,10 +232,10 @@ class AgentProxy:
         Returns:
             Any: The attribute value from the underlying agent
         """
-        logger.trace(f"__getattr__ called for attribute: {name}")
+        logger.trace("__getattr__ called for attribute: {}", name)
         self._ensure_agent_available()
         result = getattr(self._agent, name)
-        logger.trace(f"__getattr__ completed for attribute: {name}")
+        logger.trace("__getattr__ completed for attribute: {}", name)
         return result
     
     def __setattr__(self, name: str, value: Any) -> None:
@@ -241,15 +245,15 @@ class AgentProxy:
             name: Name of the attribute to set
             value: Value to set the attribute to
         """
-        logger.trace(f"__setattr__ called for attribute: {name}")
+        logger.trace("__setattr__ called for attribute: {}", name)
         
         if name.startswith('_'):  # Internal attributes
             object.__setattr__(self, name, value)
-            logger.trace(f"__setattr__ completed for internal attribute: {name}")
+            logger.trace("__setattr__ completed for internal attribute: {}", name)
         else:
             self._ensure_agent_available()
             setattr(self._agent, name, value)
-            logger.trace(f"__setattr__ completed for agent attribute: {name}")
+            logger.trace("__setattr__ completed for agent attribute: {}", name)
     
     def __call__(self, *args, **kwargs):
         """Make the proxy callable like the underlying agent.
@@ -261,7 +265,8 @@ class AgentProxy:
         Returns:
             Any: Result from calling the underlying agent
         """
-        logger.trace(f"__call__ called with {len(args)} args, {len(kwargs)} kwargs")
+        if logger.level('TRACE').no >= logger._core.min_level:
+            logger.trace("__call__ called with {} args, {} kwargs", len(args), len(kwargs))
         self._ensure_agent_available()
         result = self._agent(*args, **kwargs)
         logger.trace("__call__ completed")

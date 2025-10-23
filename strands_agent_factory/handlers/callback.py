@@ -39,7 +39,7 @@ class ConfigurableCallbackHandler:
             response_prefix: Optional prefix to print before responses (default: None)
             max_line_length: Maximum line length for tool input display (default: None)
         """
-        logger.trace(f"ConfigurableCallbackHandler.__init__ called with show_tool_use={show_tool_use}, response_prefix='{response_prefix}', max_line_length={max_line_length}")
+        logger.trace("ConfigurableCallbackHandler.__init__ called with show_tool_use={}, response_prefix='{}', max_line_length={}", show_tool_use, response_prefix, max_line_length)
         
         super().__init__()
         self.show_tool_use = show_tool_use
@@ -65,7 +65,7 @@ class ConfigurableCallbackHandler:
             tool_name: Name of the tool being called
             tool_input: Input parameters for the tool
         """
-        logger.trace(f"_format_and_print_tool_input called with tool_name='{tool_name}', input_type={type(tool_input).__name__}")
+        logger.trace("_format_and_print_tool_input called with tool_name='{}', input_type={}", tool_name, type(tool_input).__name__)
         
         print(f"\nTool #{self.tool_count}: {tool_name}")
         print_structured_data(
@@ -87,7 +87,8 @@ class ConfigurableCallbackHandler:
         Args:
             **kwargs: Event data from the agent containing event type, data, and metadata
         """
-        logger.trace(f"ConfigurableCallbackHandler.__call__ called with kwargs keys: {list(kwargs.keys())}")
+        if logger.level('TRACE').no >= logger._core.min_level:
+            logger.trace("ConfigurableCallbackHandler.__call__ called with kwargs keys: {}", list(kwargs.keys()))
 
         event = kwargs.get("event", {})
         reasoningText = kwargs.get("reasoningText", False)
