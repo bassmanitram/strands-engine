@@ -13,7 +13,7 @@ from typing import Dict, Any, List
 
 import pytest
 
-from strands_agent_factory.tools.factory import ToolFactory, ToolSpecCreationResult
+from strands_agent_factory.tools.factory import ToolFactory
 from strands_agent_factory.tools.python import import_python_item
 from strands_agent_factory.core.exceptions import (
     ToolLoadError,
@@ -136,16 +136,17 @@ class TestToolFactory:
         
         factory = ToolFactory(["/path/to/bad_config.json"])
         
-        # Should handle the error gracefully
-        assert factory._tool_configs == []
+        # Should handle the error gracefully and store error info
+        assert len(factory._tool_configs) == 1
+        assert factory._tool_configs[0]["error"] == "File not found"
+        assert "failed-config-" in factory._tool_configs[0]["id"]
 
     def test_create_tool_specs_empty(self):
         """Test creating tool specs with no configurations."""
         factory = ToolFactory([])
         
-        discovery_result, creation_results = factory.create_tool_specs()
+        creation_results = factory.create_tool_specs()
         
-        assert discovery_result is None
         assert creation_results == []
 
     @patch('strands_agent_factory.tools.factory.import_python_item')
@@ -166,10 +167,9 @@ class TestToolFactory:
         factory = ToolFactory([])
         result = factory._create_python_tool_spec(config)
         
-        assert result.error is None
-        assert result.tool_spec is not None
-        assert len(result.tool_spec["tools"]) == 1
-        assert result.requested_functions == ["test_func"]
+        assert 'error' not in result
+        assert 'tools' in result
+        assert len(result["tools"]) == 1
 
     def test_create_python_tool_spec_missing_fields(self):
         """Test Python tool spec creation with missing required fields."""
@@ -182,9 +182,8 @@ class TestToolFactory:
         factory = ToolFactory([])
         result = factory._create_python_tool_spec(config)
         
-        assert result.error is not None
-        assert "missing required fields" in result.error
-        assert result.tool_spec is None
+        assert 'error' in result
+        assert "missing required fields" in result['error']
 
     @patch('strands_agent_factory.tools.factory.import_python_item')
     def test_create_python_tool_spec_import_failure(self, mock_import):
@@ -202,9 +201,8 @@ class TestToolFactory:
         factory = ToolFactory([])
         result = factory._create_python_tool_spec(config)
         
-        assert result.error is not None
-        assert "No tools could be loaded" in result.error
-        assert result.tool_spec is None
+        assert 'error' in result
+        assert "No tools could be loaded" in result['error']
 
     @patch('strands_agent_factory.tools.factory._STRANDS_MCP_AVAILABLE', True)
     @patch('strands_agent_factory.tools.factory.MCPClient')
@@ -226,10 +224,9 @@ class TestToolFactory:
             mock_transport.return_value = Mock()
             result = factory._create_mcp_tool_spec(config)
         
-        assert result.error is None
-        assert result.tool_spec is not None
-        assert result.tool_spec["client"] == mock_client_instance
-        assert result.requested_functions == ["test_func"]
+        assert 'error' not in result
+        assert 'client' in result
+        assert result["client"] == mock_client_instance
 
     @patch('strands_agent_factory.tools.factory._STRANDS_MCP_AVAILABLE', False)
     def test_create_mcp_tool_spec_dependencies_unavailable(self):
@@ -244,9 +241,8 @@ class TestToolFactory:
         factory = ToolFactory([])
         result = factory._create_mcp_tool_spec(config)
         
-        assert result.error is not None
-        assert "MCP dependencies not installed" in result.error
-        assert result.tool_spec is None
+        assert 'error' in result
+        assert "MCP dependencies not installed" in result['error']
 
     def test_create_mcp_tool_spec_missing_transport(self):
         """Test MCP tool spec creation with missing transport configuration."""
@@ -260,9 +256,8 @@ class TestToolFactory:
         factory = ToolFactory([])
         result = factory._create_mcp_tool_spec(config)
         
-        assert result.error is not None
-        assert "must contain either 'command'" in result.error
-        assert result.tool_spec is None
+        assert 'error' in result
+        assert "must contain either 'command'" in result['error']
 
     def test_create_tool_spec_from_config_unknown_type(self):
         """Test tool spec creation with unknown tool type."""
@@ -272,14 +267,13 @@ class TestToolFactory:
         }
         
         factory = ToolFactory([])
-        result = factory.create_tool_spec_from_config(config)
+        result = factory.create_tool_from_config(config)
         
-        assert result.error is not None
-        assert "Unknown tool type" in result.error
-        assert result.tool_spec is None
+        assert 'error' in result
+        assert "Unknown tool type" in result['error']
 
     def test_create_tool_spec_from_config_disabled_tool(self):
-        """Test that disabled tools are skipped."""
+        """Test that disabled tools are handled properly."""
         config = {
             "id": "disabled_tool",
             "type": "python",
@@ -292,10 +286,11 @@ class TestToolFactory:
         factory = ToolFactory([])
         factory._tool_configs = [config]
         
-        discovery_result, creation_results = factory.create_tool_specs()
+        creation_results = factory.create_tool_specs()
         
-        # Disabled tool should be skipped
-        assert len(creation_results) == 0
+        # Disabled tool should be included with error
+        assert len(creation_results) == 1
+        assert creation_results[0]["error"] == "Tool is disabled"
 
     @patch('mcp.StdioServerParameters')
     @patch('mcp.client.stdio.stdio_client')
@@ -324,28 +319,6 @@ class TestToolFactory:
         transport_callable = factory._create_http_transport(config)
         
         assert callable(transport_callable)
-
-    def test_tool_spec_creation_result_init(self):
-        """Test ToolSpecCreationResult initialization."""
-        # Test with all parameters
-        mock_tool_spec = {"tools": [Mock()]}
-        result = ToolSpecCreationResult(
-            tool_spec=mock_tool_spec,
-            requested_functions=["func1", "func2"],
-            error="test error"
-        )
-        
-        assert result.tool_spec == mock_tool_spec
-        assert result.requested_functions == ["func1", "func2"]
-        assert result.error == "test error"
-
-    def test_tool_spec_creation_result_defaults(self):
-        """Test ToolSpecCreationResult with default values."""
-        result = ToolSpecCreationResult()
-        
-        assert result.tool_spec is None
-        assert result.requested_functions == []
-        assert result.error is None
 
     @patch('strands_agent_factory.tools.factory._STRANDS_MCP_AVAILABLE', True)
     def test_mcp_client_init(self):

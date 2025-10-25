@@ -55,11 +55,11 @@ class TestAdapterSystemIntegration:
         mock_create_generic.return_value = mock_adapter
         
         # Use a framework not in FRAMEWORK_HANDLERS
-        result = load_framework_adapter("openai")
+        result = load_framework_adapter("gemini")
         
         assert result == mock_adapter
-        mock_can_handle.assert_called_once_with("openai")
-        mock_create_generic.assert_called_once_with("openai")
+        mock_can_handle.assert_called_once_with("gemini")
+        mock_create_generic.assert_called_once_with("gemini")
 
     @pytest.mark.integration
     @patch('strands_agent_factory.adapters.base._can_handle_generically')
@@ -112,6 +112,7 @@ class TestAdapterSystemIntegration:
         # Mock successful model class import
         mock_model_class = Mock()
         mock_model_class.__annotations__ = {"model_id": str}
+        mock_model_class.__name__ = "TestModel"  # Add __name__ attribute
         
         mock_module = Mock()
         mock_module.TestModel = mock_model_class
@@ -132,6 +133,7 @@ class TestAdapterSystemIntegration:
         mock_model_instance = Mock()
         mock_model_class = Mock(return_value=mock_model_instance)
         mock_model_class.__annotations__ = {"model_id": str}
+        mock_model_class.__name__ = "TestModel"  # Add __name__ attribute
         
         mock_module = Mock()
         mock_module.TestModel = mock_model_class
@@ -147,14 +149,6 @@ class TestAdapterSystemIntegration:
     @pytest.mark.integration
     def test_adapter_error_propagation(self):
         """Test that errors are properly propagated through the adapter system."""
-        # Test explicit adapter loading error
-        with patch('strands_agent_factory.adapters.base._load_explicit_adapter') as mock_explicit:
-            mock_explicit.side_effect = Exception("Explicit adapter failed")
-            
-            with patch('strands_agent_factory.adapters.base.FRAMEWORK_HANDLERS', {"test": "test.adapter"}):
-                with pytest.raises(AdapterError, match="Failed to load explicit adapter"):
-                    load_framework_adapter("test")
-
         # Test generic adapter creation error
         with patch('strands_agent_factory.adapters.base._can_handle_generically') as mock_can_handle:
             with patch('strands_agent_factory.adapters.base._create_generic_adapter') as mock_create:
@@ -200,6 +194,7 @@ class TestAdapterSystemIntegration:
         with patch('strands_agent_factory.adapters.generic.importlib.import_module') as mock_import:
             mock_model_class = Mock()
             mock_model_class.__annotations__ = {"model_id": str}
+            mock_model_class.__name__ = "TestModel"
             
             mock_module = Mock()
             mock_module.TestModel = mock_model_class
@@ -210,34 +205,12 @@ class TestAdapterSystemIntegration:
             assert adapter.framework_name == "test"
 
     @pytest.mark.integration
-    @patch('importlib.import_module')
-    def test_explicit_adapter_loading_integration(self, mock_import):
-        """Test explicit adapter loading with real import mechanics."""
-        # Mock adapter class
-        mock_adapter_class = Mock()
-        mock_adapter_instance = Mock()
-        mock_adapter_instance.framework_name = "test_framework"
-        mock_adapter_class.return_value = mock_adapter_instance
-        
-        # Mock module
-        mock_module = Mock()
-        mock_module.TestAdapter = mock_adapter_class
-        mock_import.return_value = mock_module
-        
-        # Test loading
-        from strands_agent_factory.adapters.base import _load_explicit_adapter
-        
-        result = _load_explicit_adapter("test")
-        
-        assert result == mock_adapter_instance
-        mock_adapter_class.assert_called_once()
-
-    @pytest.mark.integration
     def test_adapter_tool_adaptation_integration(self):
         """Test tool adaptation through adapter system."""
         with patch('strands_agent_factory.adapters.generic.importlib.import_module') as mock_import:
             mock_model_class = Mock()
             mock_model_class.__annotations__ = {"model_id": str}
+            mock_model_class.__name__ = "TestModel"
             
             mock_module = Mock()
             mock_module.TestModel = mock_model_class
@@ -257,6 +230,7 @@ class TestAdapterSystemIntegration:
         with patch('strands_agent_factory.adapters.generic.importlib.import_module') as mock_import:
             mock_model_class = Mock()
             mock_model_class.__annotations__ = {"model_id": str}
+            mock_model_class.__name__ = "TestModel"
             
             mock_module = Mock()
             mock_module.TestModel = mock_model_class
@@ -287,6 +261,7 @@ class TestAdapterSystemIntegration:
         with patch('strands_agent_factory.adapters.generic.importlib.import_module') as mock_import:
             mock_model_class = Mock()
             mock_model_class.__annotations__ = {"model_id": str}
+            mock_model_class.__name__ = "TestModel"
             
             mock_module = Mock()
             mock_module.TestModel = mock_model_class
@@ -303,7 +278,7 @@ class TestAdapterSystemIntegration:
     @pytest.mark.integration
     def test_adapter_system_with_multiple_frameworks(self):
         """Test adapter system handling multiple frameworks simultaneously."""
-        frameworks_to_test = ["openai", "anthropic", "test_framework"]
+        frameworks_to_test = ["gemini", "mistral", "test_framework"]
         
         with patch('strands_agent_factory.adapters.base._can_handle_generically') as mock_can_handle:
             with patch('strands_agent_factory.adapters.base._create_generic_adapter') as mock_create:

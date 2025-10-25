@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "strands-agent-factory"
-version = "0.1.0"
+version = "1.0.0"
 description = "Factory-based agent creation framework for strands-agents with multi-framework AI provider support"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -26,7 +26,7 @@ keywords = [
     "tools"
 ]
 classifiers = [
-    "Development Status :: 4 - Beta",
+    "Development Status :: 5 - Production/Stable",
     "Intended Audience :: Developers",
     "Intended Audience :: Science/Research", 
     "License :: OSI Approved :: MIT License",
@@ -104,7 +104,14 @@ testpaths = ["tests"]
 python_files = ["test_*.py"]
 python_classes = ["Test*"]
 python_functions = ["test_*"]
-asyncio_mode = "strict"
+asyncio_mode = "auto"
+markers = [
+    "unit: Unit tests that test individual components in isolation",
+    "integration: Integration tests that test component interactions",
+    "slow: Tests that take a long time to run",
+    "requires_network: Tests that require network access",
+    "requires_models: Tests that require actual model access (expensive)"
+]
 
 [tool.black]
 line-length = 88

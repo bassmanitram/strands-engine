@@ -65,7 +65,7 @@ class AgentFactoryConfig:
         model: Model identifier string (required)
         system_prompt: System prompt for the agent (optional)
         model_config: Framework-specific model configuration (optional)
-        tool_config_paths: Paths to tool configuration files/directories
+        tool_config_paths: Paths to individual tool configuration files
         file_paths: Files to upload as (path, mimetype) pairs
         sessions_home: Base directory for session storage (optional)
         session_id: Session identifier for persistence (optional)
@@ -121,12 +121,14 @@ class AgentFactoryConfig:
     
     tool_config_paths: List[PathLike] = field(default_factory=list)
     """
-    Paths to tool configuration files or directories.
+    Paths to individual tool configuration files.
     
-    Can include:
-    - Individual JSON configuration files
-    - Directories containing configuration files
-    - Python package paths for tool discovery
+    Must be individual JSON or YAML files containing tool configurations.
+    
+    Examples:
+        - "tools/math_tools.json"
+        - "configs/file_tools.yaml"
+        - "/path/to/custom_tools.json"
     """
     
     # ========================================================================
@@ -406,8 +408,8 @@ class AgentFactoryConfig:
         """
         Validate tool configuration paths.
         
-        Ensures all tool configuration paths exist and are accessible,
-        whether they are files or directories.
+        Ensures all tool configuration paths are individual files that exist
+        and are readable.
         
         Raises:
             ConfigurationError: If any tool config path is invalid or inaccessible
@@ -428,17 +430,27 @@ class AgentFactoryConfig:
             if not path_obj.exists():
                 raise ConfigurationError(f"Tool config path does not exist: {tool_path}")
             
-            # Must be either a file or directory
-            if not (path_obj.is_file() or path_obj.is_dir()):
-                raise ConfigurationError(f"Tool config path must be a file or directory: {tool_path}")
+            # Must be a file (directories are not supported)
+            if not path_obj.is_file():
+                if path_obj.is_dir():
+                    raise ConfigurationError(
+                        f"Tool config path must be an individual file, not a directory: {tool_path}. "
+                        f"Directories are not supported. Please specify individual configuration files."
+                    )
+                else:
+                    raise ConfigurationError(f"Tool config path must be a file: {tool_path}")
             
-            # If it's a file, check if it's readable
-            if path_obj.is_file() and not os.access(path_obj, os.R_OK):
+            # Check if file is readable
+            if not os.access(path_obj, os.R_OK):
                 raise ConfigurationError(f"Tool config file is not readable: {tool_path}")
             
-            # If it's a directory, check if it's accessible
-            if path_obj.is_dir() and not os.access(path_obj, os.R_OK | os.X_OK):
-                raise ConfigurationError(f"Tool config directory is not accessible: {tool_path}")
+            # Validate file extension (should be JSON or YAML)
+            valid_extensions = {'.json', '.yaml', '.yml'}
+            if path_obj.suffix.lower() not in valid_extensions:
+                logger.warning(
+                    f"Tool config file '{tool_path}' has extension '{path_obj.suffix}'. "
+                    f"Expected one of: {', '.join(valid_extensions)}"
+                )
 
     def _validate_session_config(self):
         """

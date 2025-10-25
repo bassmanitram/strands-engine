@@ -36,7 +36,7 @@ nest_asyncio.apply()
 from .core.config import AgentFactoryConfig
 from .core.factory import AgentFactory  
 
-__version__ = "0.1.0"
+__version__ = "1.0.0"
 
 __all__ = [
     "AgentFactoryConfig",

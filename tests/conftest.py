@@ -143,7 +143,7 @@ def temp_yaml_file(temp_dir):
 def basic_config():
     """Create a basic AgentFactoryConfig for testing."""
     return AgentFactoryConfig(
-        model="openai:gpt-4o",
+        model="anthropic:claude-3-5-sonnet",
         system_prompt="You are a helpful assistant.",
         conversation_manager_type="sliding_window",
         sliding_window_size=20
@@ -154,7 +154,7 @@ def basic_config():
 def config_with_tools(temp_json_file):
     """Create an AgentFactoryConfig with tool configuration."""
     return AgentFactoryConfig(
-        model="openai:gpt-4o",
+        model="anthropic:claude-3-5-sonnet",
         tool_config_paths=[str(temp_json_file)],
         conversation_manager_type="null"
     )
@@ -174,11 +174,11 @@ def config_with_files(temp_file):
 def summarizing_config():
     """Create an AgentFactoryConfig with summarizing conversation manager."""
     return AgentFactoryConfig(
-        model="openai:gpt-4o",
+        model="anthropic:claude-3-5-sonnet",
         conversation_manager_type="summarizing",
         summary_ratio=0.3,
         preserve_recent_messages=5,
-        summarization_model="openai:gpt-3.5-turbo"
+        summarization_model="gpt-4o-mini"
     )
 
 
@@ -364,7 +364,7 @@ def temp_sessions_dir(temp_dir):
 def mock_session_manager():
     """Create a mock session manager for testing."""
     mock = Mock()
-    mock.session_id = "test_session"
+    mock.session_name = "test_session"
     mock.is_active = True
     mock.initialize = Mock()
     mock.append_message = Mock()
@@ -455,7 +455,7 @@ def mock_env_vars():
 # Parametrized Fixtures
 # ============================================================================
 
-@pytest.fixture(params=["openai:gpt-4o", "anthropic:claude-3-5-sonnet", "gpt-4o"])
+@pytest.fixture(params=["anthropic:claude-3-5-sonnet", "litellm:gpt-4o", "gpt-4o"])
 def model_strings(request):
     """Parametrized fixture for different model string formats."""
     return request.param

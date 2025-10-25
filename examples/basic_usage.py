@@ -1,12 +1,14 @@
 #!/usr/bin/env python3
 """
-Basic usage example for strands_agent_factory.
+Basic usage examples for strands_agent_factory.
 
 This example demonstrates how to create and use an agent factory
-for basic conversational AI interactions.
+for basic conversational AI interactions with various providers.
 """
 
 import asyncio
+import sys
+from pathlib import Path
 from strands_agent_factory import AgentFactoryConfig, AgentFactory
 from strands_agent_factory.core.exceptions import (
     FactoryError, ConfigurationError, InitializationError, ModelLoadError
@@ -20,7 +22,7 @@ async def basic_example():
     
     # Create configuration
     config = AgentFactoryConfig(
-        model="gpt-4o",  # Use OpenAI GPT-4
+        model="gpt-4o",  # Use OpenAI GPT-4 (requires OPENAI_API_KEY)
         system_prompt="You are a helpful assistant that provides clear, concise answers."
     )
     print(f"Created configuration with model: {config.model}")
@@ -49,10 +51,11 @@ async def basic_example():
                 if not user_input:
                     continue
                     
-                success = await agent.send_message_to_agent(user_input, show_user_input=False)
-                if not success:
-                    print("Failed to process message")
-                    
+                with agent as a:
+                    success = await a.send_message_to_agent(user_input, show_user_input=False)
+                    if not success:
+                        print("Failed to process message")
+                        
             except KeyboardInterrupt:
                 break
             except Exception as e:
@@ -73,79 +76,17 @@ async def basic_example():
         print(f"Unexpected error: {e}")
 
 
-async def advanced_example():
-    """Advanced configuration with tools and file processing."""
-    print("Advanced strands_agent_factory Example")
+async def multi_provider_example():
+    """Example showing different AI providers."""
+    print("Multi-Provider strands_agent_factory Example")
     print("=" * 50)
     
-    # Create advanced configuration
-    config = AgentFactoryConfig(
-        model="anthropic:claude-3-5-sonnet-20241022",  # Use Anthropic Claude
-        system_prompt="You are an advanced assistant with access to tools and uploaded files.",
-        conversation_manager_type="sliding_window",
-        sliding_window_size=15,
-        show_tool_use=True,
-        model_config={
-            "temperature": 0.7,
-            "max_tokens": 2000
-        },
-        # Add example file (create it first)
-        file_paths=[
-            ("example_data.txt", "text/plain")
-        ],
-        # Add example tools (create config first)
-        tool_config_paths=[
-            "tools/example_tools.json"
-        ],
-        session_id="advanced_example_session"
-    )
-    print(f"Created advanced configuration")
-    
-    try:
-        # Create and initialize factory
-        factory = AgentFactory(config)
-        await factory.initialize()
-        print("Advanced factory initialized")
-        
-        # Create agent
-        agent = factory.create_agent()
-        print("Advanced agent created")
-        print("=" * 50)
-        
-        # Example interactions
-        test_messages = [
-            "What files do you have access to?",
-            "What tools are available to you?",
-            "Can you help me analyze the uploaded data?",
-        ]
-        
-        for message in test_messages:
-            print(f"\nTesting: {message}")
-            success = await agent.send_message_to_agent(message, show_user_input=False)
-            if not success:
-                print("Message failed")
-            print("-" * 30)
-            
-    except ConfigurationError as e:
-        print(f"Configuration error: {e}")
-    except InitializationError as e:
-        print(f"Initialization failed: {e}")
-    except FactoryError as e:
-        print(f"Factory error: {e}")
-    except Exception as e:
-        print(f"Unexpected error: {e}")
-
-
-async def litellm_example():
-    """Example using LiteLLM for multi-provider support."""
-    print("LiteLLM Multi-Provider Example")
-    print("=" * 50)
-    
-    # Test different providers through LiteLLM
+    # Test different providers
     providers = [
-        ("litellm:gpt-4o", "OpenAI via LiteLLM"),
-        ("litellm:anthropic/claude-3-5-sonnet-20241022", "Anthropic via LiteLLM"),
-        ("litellm:gemini/gemini-2.5-flash", "Google Gemini via LiteLLM"),
+        ("gpt-4o", "OpenAI GPT-4 (requires OPENAI_API_KEY)"),
+        ("anthropic:claude-3-5-sonnet-20241022", "Anthropic Claude (requires ANTHROPIC_API_KEY)"),
+        ("gemini:gemini-2.5-flash", "Google Gemini (requires GOOGLE_API_KEY)"),
+        ("ollama:llama3.1:8b", "Ollama Llama (requires local Ollama server)"),
     ]
     
     for model_string, description in providers:
@@ -165,16 +106,17 @@ async def litellm_example():
             print(f"   {description} initialized successfully")
             
             # Quick test
-            success = await agent.send_message_to_agent(
-                "Hello! Please confirm you're working by saying 'System operational'",
-                show_user_input=False
-            )
-            
-            if success:
-                print(f"   {description} test completed")
-            else:
-                print(f"   {description} interaction failed")
+            with agent as a:
+                success = await a.send_message_to_agent(
+                    "Hello! Please confirm you're working by saying 'System operational'",
+                    show_user_input=False
+                )
                 
+                if success:
+                    print(f"   {description} test completed")
+                else:
+                    print(f"   {description} interaction failed")
+                    
         except ConfigurationError as e:
             print(f"   {description} configuration error: {e}")
         except InitializationError as e:
@@ -187,27 +129,163 @@ async def litellm_example():
         print("-" * 40)
 
 
+async def advanced_example():
+    """Advanced configuration with tools and file processing."""
+    print("Advanced strands_agent_factory Example")
+    print("=" * 50)
+    
+    # Create example files for demonstration
+    example_dir = Path("example_data")
+    example_dir.mkdir(exist_ok=True)
+    
+    # Create example text file
+    example_file = example_dir / "sample.txt"
+    example_file.write_text("This is sample data for the advanced example.\nIt contains multiple lines of text.")
+    
+    # Create example tool configuration file
+    tool_config_file = example_dir / "math_tools.json"
+    tool_config_file.write_text("""{
+  "id": "basic_math",
+  "type": "python",
+  "module_path": "operator",
+  "functions": ["add", "mul", "sub"]
+}""")
+    
+    try:
+        # Create advanced configuration
+        config = AgentFactoryConfig(
+            model="anthropic:claude-3-5-sonnet-20241022",  # Use Anthropic Claude
+            system_prompt="You are an advanced assistant with access to tools and uploaded files.",
+            conversation_manager_type="sliding_window",
+            sliding_window_size=15,
+            show_tool_use=True,
+            model_config={
+                "temperature": 0.7,
+                "max_tokens": 2000
+            },
+            # Add example file
+            file_paths=[
+                (str(example_file), "text/plain")
+            ],
+            # Add example tool configuration file (individual file, not directory)
+            tool_config_paths=[
+                str(tool_config_file)
+            ],
+            session_id="advanced_example_session"
+        )
+        print(f"Created advanced configuration")
+        
+        # Create and initialize factory
+        factory = AgentFactory(config)
+        await factory.initialize()
+        print("Advanced factory initialized")
+        
+        # Create agent
+        agent = factory.create_agent()
+        print("Advanced agent created")
+        print("=" * 50)
+        
+        # Example interactions
+        test_messages = [
+            "What files do you have access to?",
+            "What tools are available to you?",
+            "Can you help me analyze the uploaded data?",
+            "Can you add 15 and 27 using your tools?",
+        ]
+        
+        with agent as a:
+            for message in test_messages:
+                print(f"\nTesting: {message}")
+                success = await a.send_message_to_agent(message, show_user_input=False)
+                if not success:
+                    print("Message failed")
+                print("-" * 30)
+            
+    except ConfigurationError as e:
+        print(f"Configuration error: {e}")
+    except InitializationError as e:
+        print(f"Initialization failed: {e}")
+    except FactoryError as e:
+        print(f"Factory error: {e}")
+    except Exception as e:
+        print(f"Unexpected error: {e}")
+    finally:
+        # Cleanup example files
+        import shutil
+        if example_dir.exists():
+            shutil.rmtree(example_dir)
+            print(f"\nCleaned up example directory: {example_dir}")
+
+
+async def session_example():
+    """Example demonstrating session persistence."""
+    print("Session Persistence Example")
+    print("=" * 50)
+    
+    session_dir = Path("example_sessions")
+    session_id = "demo_session"
+    
+    try:
+        config = AgentFactoryConfig(
+            model="gpt-4o",
+            system_prompt="You are a helpful assistant. Remember our conversation across sessions.",
+            session_id=session_id,
+            sessions_home=session_dir,
+            conversation_manager_type="sliding_window",
+            sliding_window_size=20
+        )
+        
+        factory = AgentFactory(config)
+        await factory.initialize()
+        agent = factory.create_agent()
+        
+        print(f"Created agent with session persistence")
+        print(f"Session ID: {session_id}")
+        print(f"Sessions stored in: {session_dir}")
+        
+        # Demonstrate session persistence
+        with agent as a:
+            print("\nFirst interaction:")
+            await a.send_message_to_agent("My name is Alice. Please remember this.", show_user_input=True)
+            
+            print("\nSecond interaction (should remember name):")
+            await a.send_message_to_agent("What is my name?", show_user_input=True)
+            
+        print(f"\nSession data has been saved to: {session_dir / f'session_{session_id}'}")
+        print("You can restart this example and the agent will remember the conversation.")
+        
+    except Exception as e:
+        print(f"Session example error: {e}")
+    finally:
+        # Note: We don't cleanup session directory so user can see persistence
+        print(f"\nSession directory preserved at: {session_dir}")
+
+
 def main():
     """Main example selector."""
     print("strands_agent_factory Examples")
     print("=" * 30)
     print("1. Basic Usage")
-    print("2. Advanced Configuration")
-    print("3. LiteLLM Multi-Provider")
-    print("4. All Examples")
+    print("2. Multi-Provider Support")
+    print("3. Advanced Configuration")
+    print("4. Session Persistence")
+    print("5. All Examples")
     
-    choice = input("\nSelect example [1-4]: ").strip()
+    choice = input("\nSelect example [1-5]: ").strip()
     
     if choice == "1":
         asyncio.run(basic_example())
     elif choice == "2":
-        asyncio.run(advanced_example())
+        asyncio.run(multi_provider_example())
     elif choice == "3":
-        asyncio.run(litellm_example())
-    elif choice == "4":
-        asyncio.run(basic_example())
         asyncio.run(advanced_example())
-        asyncio.run(litellm_example())
+    elif choice == "4":
+        asyncio.run(session_example())
+    elif choice == "5":
+        asyncio.run(basic_example())
+        asyncio.run(multi_provider_example())
+        asyncio.run(advanced_example())
+        asyncio.run(session_example())
     else:
         print("Invalid choice. Running basic example...")
         asyncio.run(basic_example())
@@ -218,11 +296,31 @@ if __name__ == "__main__":
     Run the strands_agent_factory examples.
     
     Prerequisites:
-    - Set appropriate API keys (OPENAI_API_KEY, ANTHROPIC_API_KEY, GOOGLE_API_KEY)
-    - Install strands-agents and dependencies
-    - Ensure strands_agent_factory is importable
+    - Set appropriate API keys as environment variables:
+      * OPENAI_API_KEY for OpenAI models
+      * ANTHROPIC_API_KEY for Anthropic models  
+      * GOOGLE_API_KEY for Google models
+    - Install strands-agents with desired provider support
+    - Ensure strands_agent_factory is installed
     
     Usage:
         python examples/basic_usage.py
     """
-    main()
+    
+    # Check for basic requirements
+    print("strands_agent_factory Examples")
+    print("=" * 30)
+    print("Prerequisites:")
+    print("- Set API keys as environment variables (OPENAI_API_KEY, ANTHROPIC_API_KEY, etc.)")
+    print("- Install: pip install 'strands-agent-factory[openai,anthropic]'")
+    print("- For Ollama: Install and run Ollama locally")
+    print()
+    
+    try:
+        main()
+    except KeyboardInterrupt:
+        print("\nExiting...")
+        sys.exit(0)
+    except Exception as e:
+        print(f"Unexpected error: {e}")
+        sys.exit(1)

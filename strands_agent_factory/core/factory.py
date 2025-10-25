@@ -220,25 +220,13 @@ class AgentFactory:
             tool_factory = ToolFactory(self.config.tool_config_paths)
             
             # Create tool specs from loaded configurations
-            discovery_result, tool_spec_results = tool_factory.create_tool_specs()
+            self._loaded_tool_specs = tool_factory.create_tool_specs()
             
-            # Extract successful tool specs
-            self._loaded_tool_specs = [result.tool_spec for result in tool_spec_results if result.tool_spec]
-            
-            if discovery_result and discovery_result.failed_configs:
-                logger.warning(f"Failed to load {len(discovery_result.failed_configs)} tool configurations")
-                for failed_config in discovery_result.failed_configs:
-                    logger.warning(f"  - {failed_config.get('config_id', 'unknown')}: {failed_config.get('error', 'unknown error')}")
-            
-            # Log any tool spec creation failures
-            failed_specs = [result for result in tool_spec_results if result.error]
-            if failed_specs:
-                logger.warning(f"Failed to create {len(failed_specs)} tool specifications")
-                for failed_spec in failed_specs:
-                    logger.warning(f"  - {failed_spec.error}")
-            
-            if logger.level('TRACE').no >= logger._core.min_level:
-                logger.trace("_load_tools_specs completed with {} tool specs loaded", len(self._loaded_tool_specs))
+            spec_errors = [spec for spec in self._loaded_tool_specs if spec.get('error')]
+            if spec_errors:
+                logger.warning(f"Failed to load {len(spec_errors)} tool configurations")
+                for failed_config in spec_errors:
+                    logger.warning(f"  - {failed_config.get('config_id', 'unknown')}: {failed_config.get('error')}")
             
         except Exception as e:
             raise ToolLoadError(f"Failed to load tool specifications: {e}") from e

@@ -10,47 +10,62 @@ from strands import Agent
 
 from strands_agent_factory.adapters.base import FrameworkAdapter
 from strands_agent_factory.messaging.generator import generate_llm_messages
-from strands_agent_factory.core.types import ToolSpec
+from strands_agent_factory.core.types import EnhancedToolSpec
 
 class AgentProxy:
-    """Proxy for Agent that manages MCP server lifecycle and defers agent creation until context entry.
+    """Proxy for Agent that manages MCP client lifecycle and defers agent creation until context entry.
     
     This proxy ensures MCP servers are properly initialized before creating the underlying Agent,
     preventing premature agent creation and ensuring all tools are available.
     """
     
-    def __init__(self, adapter: FrameworkAdapter, tool_specs: List[ToolSpec], **kwargs: Any) -> None:
+    def __init__(self, adapter: FrameworkAdapter, tool_specs: List[EnhancedToolSpec], **kwargs: Any) -> None:
         """Initialize the AgentProxy with configuration for later agent creation.
         
         Args:
             adapter: Framework adapter for message transformations
-            tool_specs: List of tool specifications including MCP server clients
+            tool_specs: List of enhanced tool specifications including MCP server clients
             **kwargs: Arguments to pass to Agent constructor during __enter__
         """
         if logger.level('TRACE').no >= logger._core.min_level:
             logger.trace("AgentProxy.__init__ called with {} tool specs", len(tool_specs))
         
         self._adapter = adapter
-        self._tool_specs = tool_specs or []
         self._agent_kwargs = kwargs
         self._agent: Optional[Agent] = None
         self._context_entered = False
     
+        self._all_tool_specs = tool_specs
         # Separate MCP server specs from regular tools
-        self._mcp_server_specs = [obj for obj in tool_specs if obj.get("client")]
+        self._local_tool_specs = [obj for obj in tool_specs if not obj.get("client") and not obj.get("error")]
+        self._mcp_client_specs = [obj for obj in tool_specs if obj.get("client") and not obj.get("error")]
+
         self._tools = []
-        for spec in tool_specs:
+        for spec in self._local_tool_specs:
             if spec.get("tools"):
-                self._tools.extend(spec["tools"])
+                my_tools = spec["tools"]
+                # Use robust name extraction that handles tools without .name attribute
+                spec["tool_names"] = [getattr(tool, 'name', getattr(tool, '__name__', str(tool))) for tool in my_tools]
+                self._tools.extend(my_tools)
 
         self._mcp_tools = []
+
         self._max_threads = 3
         self._exit_stack = None
-        self._active_mcp_servers = []
+        self._active_mcp_clients = []
         
         if logger.level('TRACE').no >= logger._core.min_level:
-            logger.trace("AgentProxy.__init__ completed - {} MCP servers, {} regular tools", len(self._mcp_server_specs), len(self._tools))
+            logger.trace("AgentProxy.__init__ completed - {} MCP clients, {} regular tools", len(self._mcp_client_specs), len(self._tools))
 
+    @property
+    def tool_specs(self) -> List[EnhancedToolSpec]:
+        """Get the enhanced tool specifications provided to the proxy.
+        
+        Returns:
+            List[EnhancedToolSpec]: The list of enhanced tool specifications
+        """
+        return self._all_tool_specs
+    
     def __enter__(self):
         """Initialize MCP servers and create the underlying Agent.
         
@@ -58,68 +73,63 @@ class AgentProxy:
             self: The proxy instance for use in the context manager
         """
         if logger.level('TRACE').no >= logger._core.min_level:
-            logger.trace("AgentProxy.__enter__ called with {} MCP server specs", len(self._mcp_server_specs))
+            logger.trace("AgentProxy.__enter__ called with {} MCP server specs", len(self._mcp_client_specs))
         
         # Extract MCP clients from tool specs
-        mcp_clients = [spec["client"] for spec in self._mcp_server_specs]
+        mcp_clients = [spec["client"] for spec in self._mcp_client_specs]
 
         # Initialize MCP servers concurrently
-        futures_with_clients = []
-        if mcp_clients:
+        futures_with_specs = []
+        if self._mcp_client_specs:
             start_time = time.perf_counter()
             self._exit_stack = ExitStack()
             
             # Register ALL clients for cleanup before initialization
-            for client in mcp_clients:
+            for client in [spec["client"] for spec in self._mcp_client_specs]:
                 try:
                     self._exit_stack.push(client.__exit__)
                 except Exception as e:
                     logger.debug("Could not register cleanup for client {}: {}", getattr(client, 'server_id', 'unknown'), e)
             
             with ThreadPoolExecutor(max_workers=self._max_threads) as executor:
-                for client in mcp_clients:
+                for spec in self._mcp_client_specs:
+                    client = spec["client"]
                     future = executor.submit(self._call_single_enter_safely, client)
-                    futures_with_clients.append((future, client))
+                    futures_with_specs.append((future, spec))
 
                 # Wait for all MCP server initializations to complete
-                done, not_done = concurrent.futures.wait([item[0] for item in futures_with_clients], 
+                done, not_done = concurrent.futures.wait([item[0] for item in futures_with_specs], 
                                             return_when=concurrent.futures.ALL_COMPLETED)
                 
                 if not_done:
                     logger.warning("Some MCP server initializations were not done even though the 'wait for all' returned")
 
                 # Process results and track only successful clients
-                for future, client in futures_with_clients:
+                for future, spec in futures_with_specs:
+                    client = spec["client"]
                     try:
-                        _resource = future.result()
-                        self._active_mcp_servers.append(client)
+                        _resource = future.result() # Will raise if there was an exception
+                        tools = client.list_tools_sync()
+                        # Use robust name extraction for MCP tools too
+                        spec["tool_names"] = [getattr(tool, 'tool_name', getattr(tool, '__name__', str(tool))) for tool in tools]
+                        self._mcp_tools.extend(tools)
+                        self._active_mcp_clients.append(client)
                         logger.debug("Successfully initialized MCP client: {}", client.server_id)
                     except Exception as e:
                         logger.warning(f"MCP client initialization failed for {getattr(client, 'server_id', 'unknown')}: {e}")
+                        spec["error"] = str(e)
                         # Cleanup already registered above
 
             init_time = time.perf_counter() - start_time
             logger.debug("MCP server initialization completed for {} servers in {:.2f}ms", 
-                        len(self._active_mcp_servers), init_time * 1000)
-
-            # Collect tools from all active MCP servers
-            for client in self._active_mcp_servers:
-                try:
-                    start_time = time.perf_counter()
-                    tools = client.list_tools_sync()
-                    self._mcp_tools.extend(tools)
-                    tool_time = time.perf_counter() - start_time
-                    logger.debug("Tool collection from MCP server '{}' completed: {} tools in {:.2f}ms", 
-                                client.server_id, len(tools), tool_time * 1000)
-                except Exception as e:
-                    logger.error(f"MCP client tools listing failed for {getattr(client, 'server_id', 'unknown')}: {e}")
+                        len(self._active_mcp_clients), init_time * 1000)
 
         # Create the actual Agent with all tools available
         self._context_entered = True
         self._agent = Agent(tools=(self._tools + self._mcp_tools), **self._agent_kwargs)
 
         if logger.level('TRACE').no >= logger._core.min_level:
-            logger.trace("AgentProxy.__enter__ completed with {} active MCP servers", len(self._active_mcp_servers))
+            logger.trace("AgentProxy.__enter__ completed with {} active MCP servers", len(self._active_mcp_clients))
         return self
     
     def _call_single_enter_safely(self, manager):
@@ -157,12 +167,12 @@ class AgentProxy:
         
         if self._exit_stack:
             result = self._exit_stack.__exit__(exc_type, exc_val, exc_tb)
-            self._active_mcp_servers = []
+            self._active_mcp_clients = []
             self._mcp_tools = []
             logger.trace("AgentProxy.__exit__ completed with exit stack cleanup")
             return result
         
-        self._active_mcp_servers = []
+        self._active_mcp_clients = []
         self._mcp_tools = []
         logger.trace("AgentProxy.__exit__ completed (no exit stack)")
         return False

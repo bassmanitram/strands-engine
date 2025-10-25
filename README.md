@@ -1,17 +1,17 @@
 # Strands Agent Factory
 
-A configuration-driven factory framework for creating and managing [strands-agents](https://github.com/pydantic/strands) Agent instances. This package provides a clean abstraction layer that handles multi-framework AI provider support, tool management, session persistence, and conversation management.
+A configuration-driven factory framework for creating and managing [strands-agents](https://github.com/strands-agents) Agent instances. This package provides a clean abstraction layer that handles multi-framework AI provider support, tool management, session persistence, and conversation management.
 
 ## Features
 
-- **🏭 Factory Pattern**: Clean separation between configuration and instantiation
-- **🌐 Multi-Framework Support**: OpenAI, Anthropic, LiteLLM, Ollama, AWS Bedrock adapters
-- **🛠️ Advanced Tool System**: Python functions, MCP servers, automatic schema adaptation
-- **📁 File Processing**: Upload and process documents in various formats with smart content extraction
-- **💬 Smart Conversation Management**: Sliding window, summarizing, and custom strategies
-- **🔄 Session Persistence**: Save and restore conversation state across sessions
-- **⚙️ Declarative Configuration**: Simple dataclass-based configuration with validation
-- **🔧 Extensible Architecture**: Plugin system for custom adapters and tools
+- **Factory Pattern**: Clean separation between configuration and instantiation
+- **Multi-Framework Support**: Automatic support for any strands-compatible framework plus specialized adapters
+- **Advanced Tool System**: Python functions, MCP servers, automatic schema adaptation
+- **File Processing**: Upload and process documents in various formats with smart content extraction
+- **Smart Conversation Management**: Sliding window, summarizing, and custom strategies
+- **Session Persistence**: Save and restore conversation state across sessions
+- **Declarative Configuration**: Simple dataclass-based configuration with validation
+- **Extensible Architecture**: Plugin system for custom adapters and tools
 
 ## Quick Start
 
@@ -22,9 +22,9 @@ A configuration-driven factory framework for creating and managing [strands-agen
 pip install strands-agent-factory
 
 # Install with specific AI provider support
-pip install "strands-agent-factory[litellm]"      # LiteLLM (100+ providers)
 pip install "strands-agent-factory[anthropic]"    # Anthropic Claude
 pip install "strands-agent-factory[openai]"       # OpenAI GPT models
+pip install "strands-agent-factory[litellm]"      # LiteLLM (100+ providers)
 pip install "strands-agent-factory[ollama]"       # Ollama local models
 pip install "strands-agent-factory[bedrock]"      # AWS Bedrock
 
@@ -41,7 +41,7 @@ pip install "strands-agent-factory[tools]"
 pip install "strands-agent-factory[full]"
 ```
 
-**Note**: The framework extras (`[litellm]`, `[anthropic]`, etc.) automatically install the correct `strands-agents[framework]` dependencies with all required packages.
+**Note**: The framework extras automatically install the correct `strands-agents[framework]` dependencies with all required packages.
 
 ### Basic Usage
 
@@ -80,14 +80,17 @@ config = AgentFactoryConfig(model="gpt-4o")
 # Anthropic (requires: pip install "strands-agent-factory[anthropic]")  
 config = AgentFactoryConfig(model="anthropic:claude-3-5-sonnet-20241022")
 
-# Google Gemini (requires: pip install "strands-agent-factory[litellm]")
-config = AgentFactoryConfig(model="litellm:gemini/gemini-2.5-flash")
+# Google Gemini (automatic generic adapter support)
+config = AgentFactoryConfig(model="gemini:gemini-2.5-flash")
 
 # Ollama (requires: pip install "strands-agent-factory[ollama]")
 config = AgentFactoryConfig(model="ollama:llama3.1:8b")
 
 # AWS Bedrock (requires: pip install "strands-agent-factory[bedrock]")
 config = AgentFactoryConfig(model="bedrock:anthropic.claude-3-sonnet-20240229-v1:0")
+
+# LiteLLM for 100+ providers (requires: pip install "strands-agent-factory[litellm]")
+config = AgentFactoryConfig(model="litellm:gemini/gemini-2.5-flash")
 ```
 
 ### Advanced Configuration
@@ -111,8 +114,12 @@ config = AgentFactoryConfig(
         ("config.json", "application/json")
     ],
     
-    # Tool configuration paths
-    tool_config_paths=["tools/", "custom_tools.json"],
+    # Tool configuration files
+    tool_config_paths=[
+        "tools/math_tools.json",
+        "tools/file_tools.json", 
+        "custom_tools.yaml"
+    ],
     
     # Model parameters
     model_config={
@@ -134,37 +141,6 @@ await factory.initialize()
 agent = factory.create_agent()
 ```
 
-## Installation Options
-
-### Framework Dependencies
-
-strands-agent-factory uses `strands-agents[framework]` extras to ensure all necessary dependencies are installed:
-
-| Extra | Includes | Use For |
-|-------|----------|---------|
-| `[litellm]` | `strands-agents[litellm]` | 100+ AI providers via LiteLLM |
-| `[anthropic]` | `strands-agents[anthropic]` | Direct Anthropic Claude API |
-| `[openai]` | `strands-agents[openai]` | Direct OpenAI GPT API |
-| `[ollama]` | `strands-agents[ollama]` | Ollama local models |
-| `[bedrock]` | `strands-agents[bedrock]` | AWS Bedrock models |
-| `[tools]` | `strands-agents-tools` | strands-tools integration |
-| `[all-providers]` | All framework extras | Everything except tools |
-| `[full]` | All extras including dev tools | Complete installation |
-
-### Development Installation
-
-```bash
-# Clone repository
-git clone https://github.com/bassmanitram/strands-agent-factory.git
-cd strands-agent-factory
-
-# Install in development mode with all features
-pip install -e ".[full]"
-
-# Or minimal development setup
-pip install -e ".[dev]"
-```
-
 ## Architecture
 
 ### Modern Modular Structure
@@ -175,12 +151,13 @@ strands_agent_factory/
 │   ├── factory.py          # Main AgentFactory
 │   ├── agent.py            # AgentProxy wrapper
 │   ├── config.py           # Configuration classes
-│   └── types.py            # Type definitions
+│   ├── types.py            # Type definitions
+│   ├── exceptions.py       # Exception hierarchy
+│   └── utils.py            # Utility functions
 ├── adapters/               # Framework adapters
 │   ├── base.py            # Base adapter interface
-│   ├── openai.py          # OpenAI integration
-│   ├── anthropic.py       # Anthropic integration
-│   ├── litellm.py         # LiteLLM (100+ providers)
+│   ├── generic.py         # Generic adapter (automatic support)
+│   ├── litellm.py         # LiteLLM integration
 │   ├── ollama.py          # Local models
 │   └── bedrock.py         # AWS Bedrock
 ├── tools/                  # Tool management
@@ -203,6 +180,52 @@ strands_agent_factory/
 - **Framework Abstraction**: Unified interface across different AI providers
 - **Extensibility**: Plugin architecture for custom adapters and tools
 
+## Framework Support
+
+### Automatic Generic Adapter
+
+The factory includes a powerful generic adapter that automatically supports any framework following standard strands-agents patterns:
+
+```python
+# These work automatically without custom adapters:
+config = AgentFactoryConfig(model="gemini:gemini-2.5-flash")      # Google Gemini
+config = AgentFactoryConfig(model="mistral:mistral-large")        # Mistral
+config = AgentFactoryConfig(model="cohere:command-r-plus")        # Cohere
+config = AgentFactoryConfig(model="openai:gpt-4o")               # OpenAI
+config = AgentFactoryConfig(model="anthropic:claude-3-5-sonnet") # Anthropic
+```
+
+### Specialized Adapters
+
+For frameworks requiring special handling:
+
+| Framework | Adapter | Special Features |
+|-----------|---------|------------------|
+| **LiteLLM** | `LiteLLMAdapter` | Tool schema cleaning, 100+ provider support |
+| **AWS Bedrock** | `BedrockAdapter` | BotocoreConfig handling, content adaptation |
+| **Ollama** | `OllamaAdapter` | Host configuration, local model support |
+
+### Custom Framework Adapters
+
+Extend support to new AI providers:
+
+```python
+from strands_agent_factory.adapters.base import FrameworkAdapter
+
+class MyProviderAdapter(FrameworkAdapter):
+    @property
+    def framework_name(self) -> str:
+        return "myprovider"
+    
+    def load_model(self, model_name, model_config):
+        # Implement provider-specific model loading
+        return MyProviderModel(model_name, **model_config or {})
+    
+    def adapt_tools(self, tools, model_string):
+        # Adapt tool schemas for provider compatibility
+        return [self._adapt_tool_schema(tool) for tool in tools]
+```
+
 ## Configuration
 
 ### AgentFactoryConfig Parameters
@@ -213,7 +236,7 @@ strands_agent_factory/
 | `system_prompt` | `Optional[str]` | System prompt for the agent | `None` |
 | `initial_message` | `Optional[str]` | Initial user message (sent with files) | `None` |
 | `model_config` | `Optional[Dict[str, Any]]` | Framework-specific model parameters | `None` |
-| `tool_config_paths` | `List[PathLike]` | Paths to tool configuration files/dirs | `[]` |
+| `tool_config_paths` | `List[PathLike]` | Paths to individual tool configuration files | `[]` |
 | `file_paths` | `List[Tuple[PathLike, Optional[str]]]` | Files as (path, mimetype) tuples | `[]` |
 | `sessions_home` | `Optional[PathLike]` | Directory for session storage | `None` |
 | `session_id` | `Optional[str]` | Session identifier for persistence | `None` |
@@ -234,9 +257,10 @@ strands_agent_factory/
 The factory intelligently handles various model identifier formats:
 
 ```python
-# Direct provider names (defaults to OpenAI)
+# Direct provider names (uses generic adapter)
 "gpt-4o"                    # → OpenAI GPT-4
-"gpt-4o-mini"              # → OpenAI GPT-4 Mini
+"claude-3-5-sonnet"         # → Anthropic Claude
+"gemini-2.5-flash"          # → Google Gemini
 
 # Explicit framework prefixes
 "anthropic:claude-3-5-sonnet-20241022"     # → Anthropic Claude
@@ -250,66 +274,31 @@ The factory intelligently handles various model identifier formats:
 "litellm:cohere/command-r-plus"            # → Cohere
 ```
 
-## Framework Adapters
-
-### Built-in Adapters
-
-- **OpenAI**: Direct OpenAI API with all GPT models
-- **Anthropic**: Direct Anthropic API with Claude models  
-- **LiteLLM**: Unified interface to 100+ providers (Gemini, Azure, Cohere, etc.)
-- **Ollama**: Local model serving with custom models
-- **Bedrock**: AWS Bedrock with Claude, Titan, and other models
-
-### Custom Framework Adapters
-
-Extend support to new AI providers:
-
-```python
-from strands_agent_factory.adapters.base import FrameworkAdapter
-from strands.models import Model
-
-class MyProviderAdapter(FrameworkAdapter):
-    @property
-    def framework_name(self) -> str:
-        return "myprovider"
-    
-    def load_model(self, model_name, model_config):
-        # Implement provider-specific model loading
-        return MyProviderModel(model_name, **model_config or {})
-    
-    def adapt_tools(self, tools, model_string):
-        # Adapt tool schemas for provider compatibility
-        return [self._adapt_tool_schema(tool) for tool in tools]
-```
-
 ## Advanced Tool System
 
 ### Tool Configuration
 
-Tools are loaded from JSON/YAML configuration files with flexible discovery:
+Tools are loaded from individual JSON/YAML configuration files:
 
 ```json
 {
-  "tools": [
-    {
-      "type": "python_function",
-      "module": "my_tools.calculator", 
-      "config": {
-        "functions": ["add", "multiply", "divide"],
-        "package_path": "src/",
-        "base_path": "/project/root"
-      }
-    },
-    {
-      "type": "mcp_server",
-      "config": {
-        "command": ["python", "-m", "my_mcp_server"],
-        "args": ["--port", "8080"],
-        "env": {"API_KEY": "${SECRET_KEY}"},
-        "functions": ["search", "analyze"]
-      }
-    }
-  ]
+  "id": "calculator_tools",
+  "type": "python",
+  "module_path": "my_tools.calculator", 
+  "functions": ["add", "multiply", "divide"],
+  "package_path": "src/",
+  "base_path": "/project/root"
+}
+```
+
+```json
+{
+  "id": "mcp_server_tools",
+  "type": "mcp",
+  "command": ["python", "-m", "my_mcp_server"],
+  "args": ["--port", "8080"],
+  "env": {"API_KEY": "${SECRET_KEY}"},
+  "functions": ["search", "analyze"]
 }
 ```
 
@@ -318,19 +307,6 @@ Tools are loaded from JSON/YAML configuration files with flexible discovery:
 - **Python Functions**: Load functions from any Python module/package
 - **MCP Servers**: Model Context Protocol servers via stdio or HTTP
 - **Custom Tools**: Extend with custom tool adapters
-
-### Automatic Tool Discovery
-
-```python
-# Load tools from multiple sources
-config = AgentFactoryConfig(
-    model="gpt-4o",
-    tool_config_paths=[
-        "tools/",                    # Directory scan
-        "custom_tools.json",         # Specific file
-    ]
-)
-```
 
 ## Smart File Processing
 
@@ -415,11 +391,11 @@ agent = factory.create_agent()
 
 ```
 user_sessions/
-├── user_123_project_alpha/
+├── session_user_123_project_alpha/
 │   ├── conversation.json      # Message history
 │   ├── metadata.json         # Session metadata
 │   └── uploads/              # Uploaded files
-└── other_session_id/
+└── session_other_session_id/
     └── ...
 ```
 
@@ -433,8 +409,9 @@ config = AgentFactoryConfig(
     system_prompt="You are a research assistant with access to document analysis tools.",
     tool_config_paths=["tools/research_tools.json"],
     file_paths=[
-        ("papers/*.pdf", "application/pdf"),
-        ("data/*.csv", "text/csv")
+        ("papers/paper1.pdf", "application/pdf"),
+        ("papers/paper2.pdf", "application/pdf"),
+        ("data/results.csv", "text/csv")
     ],
     conversation_manager_type="summarizing",
     session_id="research_2024"
@@ -447,9 +424,12 @@ config = AgentFactoryConfig(
 config = AgentFactoryConfig(
     model="gpt-4o",
     system_prompt="You are a code assistant with access to development tools.",
-    tool_config_paths=["tools/dev_tools/"],
+    tool_config_paths=[
+        "tools/code_analysis.json",
+        "tools/git_tools.yaml"
+    ],
     file_paths=[
-        ("src/**/*.py", "text/plain"),
+        ("src/main.py", "text/plain"),
         ("requirements.txt", "text/plain"),
         ("README.md", "text/markdown")
     ],
@@ -462,55 +442,16 @@ config = AgentFactoryConfig(
 
 ```python
 config = AgentFactoryConfig(
-    model="litellm:gemini/gemini-2.0-flash-exp",  # Supports vision
+    model="gemini:gemini-2.0-flash-exp",  # Supports vision
     system_prompt="Analyze documents and images for insights.",
     file_paths=[
-        ("charts/*.png", "image/png"),
-        ("reports/*.pdf", "application/pdf"),
-        ("data/*.json", "application/json")
+        ("charts/chart1.png", "image/png"),
+        ("charts/chart2.png", "image/png"),
+        ("reports/summary.pdf", "application/pdf"),
+        ("data/metrics.json", "application/json")
     ],
     tool_config_paths=["tools/analysis_tools.yaml"]
 )
-```
-
-## Testing & Development
-
-### Quick Functionality Test
-
-```bash
-python test_messages.py
-```
-
-### Integration Testing
-
-```bash
-# Set up API credentials
-export OPENAI_API_KEY="your-key"
-export ANTHROPIC_API_KEY="your-key"  
-export GOOGLE_API_KEY="your-key"
-
-# Run comprehensive tests
-python test_sniff_with_credentials.py
-
-# Interactive demo
-./demo-headless.sh
-```
-
-### Development Tools
-
-```bash
-# Install development dependencies
-pip install -e ".[dev]"
-
-# Code formatting
-black strands_agent_factory/
-isort strands_agent_factory/
-
-# Type checking
-mypy strands_agent_factory/
-
-# Run tests
-pytest tests/
 ```
 
 ## Error Handling & Debugging
@@ -518,25 +459,26 @@ pytest tests/
 ### Comprehensive Error Handling
 
 ```python
-factory = AgentFactory(config)
+from strands_agent_factory.core.exceptions import (
+    InitializationError, ConfigurationError, ModelLoadError
+)
 
-# Initialization may fail due to credentials/configuration
-success = await factory.initialize()
-if not success:
-    logger.error("Factory initialization failed - check credentials and config")
-    return
-
-# Agent creation may fail due to invalid model
-agent = factory.create_agent()
-if not agent:
-    logger.error("Agent creation failed - check model name and configuration")
-    return
-
-# Use context manager for proper resource cleanup
-with agent as a:
-    success = await a.send_message_to_agent("Hello")
-    if not success:
-        logger.error("Message processing failed")
+try:
+    factory = AgentFactory(config)
+    await factory.initialize()
+    agent = factory.create_agent()
+    
+    with agent as a:
+        success = await a.send_message_to_agent("Hello")
+        if not success:
+            print("Message processing failed")
+            
+except ConfigurationError as e:
+    print(f"Configuration error: {e}")
+except InitializationError as e:
+    print(f"Initialization failed: {e}")
+except ModelLoadError as e:
+    print(f"Model loading failed: {e}")
 ```
 
 ### Debug Logging
@@ -568,6 +510,37 @@ logging.getLogger("strands_agent_factory").setLevel(logging.DEBUG)
 - Configure session persistence for multi-turn interactions
 - Use MCP servers for external system integration
 
+## Testing & Development
+
+### Running Examples
+
+```bash
+# Basic functionality test
+python examples/basic_usage.py
+
+# Set up API credentials for testing
+export OPENAI_API_KEY="your-key"
+export ANTHROPIC_API_KEY="your-key"  
+export GOOGLE_API_KEY="your-key"
+```
+
+### Development Tools
+
+```bash
+# Install development dependencies
+pip install -e ".[dev]"
+
+# Code formatting
+black strands_agent_factory/
+isort strands_agent_factory/
+
+# Type checking
+mypy strands_agent_factory/
+
+# Run tests
+pytest tests/
+```
+
 ## Contributing
 
 We welcome contributions! Please see our contribution guidelines:
@@ -575,7 +548,7 @@ We welcome contributions! Please see our contribution guidelines:
 1. **Fork** the repository
 2. **Create** a feature branch: `git checkout -b feature/amazing-feature`
 3. **Make** your changes with comprehensive tests
-4. **Test** using the sniff tests: `./demo-headless.sh`
+4. **Test** using the provided test suite
 5. **Submit** a pull request with detailed description
 
 ### Development Setup
@@ -592,16 +565,16 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ## Support & Community
 
-- **🐛 Issues**: [GitHub Issues](https://github.com/bassmanitram/strands-agent-factory/issues)
-- **📖 Documentation**: See examples and comprehensive docstrings
-- **🧪 Testing**: Use provided test suite for validation
-- **💬 Discussions**: GitHub Discussions for questions and ideas
+- **Issues**: [GitHub Issues](https://github.com/bassmanitram/strands-agent-factory/issues)
+- **Documentation**: See examples and comprehensive docstrings
+- **Testing**: Use provided test suite for validation
+- **Discussions**: GitHub Discussions for questions and ideas
 
 ## Roadmap
 
-- [ ] Enhanced MCP server discovery and management
-- [ ] Plugin system for custom conversation managers
-- [ ] Streaming response support for all frameworks
-- [ ] Advanced file processing with OCR and vision models
-- [ ] Distributed agent orchestration
-- [ ] Web UI for configuration and testing
+- Enhanced MCP server discovery and management
+- Plugin system for custom conversation managers
+- Streaming response support for all frameworks
+- Advanced file processing with OCR and vision models
+- Distributed agent orchestration
+- Web UI for configuration and testing

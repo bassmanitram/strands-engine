@@ -6,6 +6,7 @@ Tests configuration validation, initialization, and error handling.
 
 import tempfile
 import os
+import json
 from pathlib import Path
 from unittest.mock import patch, mock_open
 
@@ -39,15 +40,27 @@ class TestAgentFactoryConfig:
         assert config.system_prompt == system_prompt
 
     def test_config_with_tool_config_paths(self):
-        """Test configuration with tool config paths."""
-        with tempfile.TemporaryDirectory() as temp_dir:
-            tool_config_paths = [temp_dir]
+        """Test configuration with tool config paths (individual files only)."""
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
+            # Create a valid tool config file
+            tool_config = {
+                "id": "test_tool",
+                "type": "python",
+                "module_path": "test.module",
+                "functions": ["test_func"]
+            }
+            json.dump(tool_config, f)
+            tool_config_file = f.name
+        
+        try:
             config = AgentFactoryConfig(
                 model="openai:gpt-4o",
-                tool_config_paths=tool_config_paths
+                tool_config_paths=[tool_config_file]
             )
             
-            assert config.tool_config_paths == tool_config_paths
+            assert config.tool_config_paths == [tool_config_file]
+        finally:
+            os.unlink(tool_config_file)
 
     def test_config_with_file_paths(self):
         """Test configuration with file paths."""
@@ -94,29 +107,40 @@ class TestAgentFactoryConfig:
             f.write("test content")
             temp_file = f.name
         
-        with tempfile.TemporaryDirectory() as temp_dir:
-            try:
-                config = AgentFactoryConfig(
-                    model="openai:gpt-4o",
-                    system_prompt="You are helpful",
-                    tool_config_paths=[temp_dir],
-                    file_paths=[(temp_file, "text/plain")],
-                    sliding_window_size=15,
-                    preserve_recent_messages=7,
-                    conversation_manager_type="summarizing",
-                    model_config={"temperature": 0.5}
-                )
-                
-                assert config.model == "openai:gpt-4o"
-                assert config.system_prompt == "You are helpful"
-                assert len(config.tool_config_paths) == 1
-                assert config.file_paths == [(temp_file, "text/plain")]
-                assert config.sliding_window_size == 15
-                assert config.preserve_recent_messages == 7
-                assert config.conversation_manager_type == "summarizing"
-                assert config.model_config["temperature"] == 0.5
-            finally:
-                os.unlink(temp_file)
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as tool_f:
+            # Create a valid tool config file
+            tool_config = {
+                "id": "test_tool",
+                "type": "python", 
+                "module_path": "test.module",
+                "functions": ["test_func"]
+            }
+            json.dump(tool_config, tool_f)
+            tool_config_file = tool_f.name
+        
+        try:
+            config = AgentFactoryConfig(
+                model="openai:gpt-4o",
+                system_prompt="You are helpful",
+                tool_config_paths=[tool_config_file],
+                file_paths=[(temp_file, "text/plain")],
+                sliding_window_size=15,
+                preserve_recent_messages=7,
+                conversation_manager_type="summarizing",
+                model_config={"temperature": 0.5}
+            )
+            
+            assert config.model == "openai:gpt-4o"
+            assert config.system_prompt == "You are helpful"
+            assert len(config.tool_config_paths) == 1
+            assert config.file_paths == [(temp_file, "text/plain")]
+            assert config.sliding_window_size == 15
+            assert config.preserve_recent_messages == 7
+            assert config.conversation_manager_type == "summarizing"
+            assert config.model_config["temperature"] == 0.5
+        finally:
+            os.unlink(temp_file)
+            os.unlink(tool_config_file)
 
     def test_model_validation_required(self):
         """Test that model parameter is required."""
@@ -243,6 +267,31 @@ class TestAgentFactoryConfig:
                 model="openai:gpt-4o",
                 tool_config_paths=["/nonexistent/path"]
             )
+
+    def test_tool_config_paths_validation_files_only(self):
+        """Test tool config paths must be files, not directories."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            with pytest.raises(ConfigurationError, match="Tool config path must be an individual file, not a directory"):
+                AgentFactoryConfig(
+                    model="openai:gpt-4o",
+                    tool_config_paths=[temp_dir]
+                )
+
+    def test_tool_config_paths_validation_file_extension_warning(self):
+        """Test tool config paths with non-standard extensions generate warnings."""
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.txt', delete=False) as f:
+            f.write("test content")
+            temp_file = f.name
+        
+        try:
+            # This should work but may generate a warning
+            config = AgentFactoryConfig(
+                model="openai:gpt-4o",
+                tool_config_paths=[temp_file]
+            )
+            assert config.tool_config_paths == [temp_file]
+        finally:
+            os.unlink(temp_file)
 
     def test_model_config_validation_dict(self):
         """Test model_config must be a dictionary."""

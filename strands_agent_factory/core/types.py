@@ -9,14 +9,16 @@ extensibility and framework adaptation.
 Key type categories:
 - Configuration types: For loading and validating user configurations
 - Tool specification types: For describing how tools should be loaded
-- Runtime protocol types: For tool execution and framework integration
 - Discovery and reporting types: For tool discovery and error reporting
 
 All types are designed to be JSON-serializable where appropriate and provide
 clear interfaces for the various components of strands_agent_factory.
+
+Note: Tool execution is handled by strands-agents, not strands_agent_factory.
+This module focuses on tool configuration and specification types only.
 """
 
-from typing import Any, Dict, List, Optional, Union, TypedDict, Protocol, runtime_checkable
+from typing import Any, Callable, Dict, List, Literal, Optional, Union, TypedDict
 from pathlib import Path
 
 # ============================================================================
@@ -25,22 +27,6 @@ from pathlib import Path
 
 PathLike = Union[str, Path]
 """Type alias for filesystem paths - accepts both strings and Path objects."""
-
-JSONDict = Dict[str, Any]
-"""Type alias for JSON-like dictionary structures."""
-
-ToolConfig = Dict[str, Any]
-"""
-Configuration dictionary for a single tool.
-
-Common fields across all tool types:
-- id: Unique identifier for the tool
-- type: Tool type ("python", "mcp", etc.)
-- disabled: Optional boolean to skip tool loading
-- functions: Optional list of specific functions to load
-
-Additional fields vary by tool type and are validated by the appropriate adapter.
-"""
 
 Tool = Any
 """
@@ -58,6 +44,82 @@ Type alias for framework adapter instances.
 Framework adapters handle model loading, tool adaptation, and framework-specific
 configuration. The actual type depends on the specific framework being used.
 """
+
+
+# ============================================================================
+# Tool Configuration Types
+# ============================================================================
+
+class BaseToolConfig(TypedDict, total=False):
+    """Base tool configuration loaded from files."""
+    id: str
+    type: Literal["python", "mcp", "mcp-stdio", "mcp-http"]
+    source_file: str
+    disabled: bool
+    error: str  # Present if config loading failed
+
+
+class PythonToolConfig(BaseToolConfig):
+    """Python tool configuration."""
+    type: Literal["python"]
+    module_path: str
+    functions: List[str]
+    package_path: Optional[str]
+
+
+class MCPToolConfig(BaseToolConfig):
+    """MCP tool configuration."""
+    type: Literal["mcp", "mcp-stdio", "mcp-http"]
+    functions: List[str]
+    # Transport configuration (one of these required)
+    command: Optional[List[str]]  # For stdio transport
+    args: Optional[List[str]]     # For stdio transport
+    env: Optional[Dict[str, str]] # For stdio transport
+    url: Optional[str]            # For HTTP transport
+
+
+ToolConfig = Union[PythonToolConfig, MCPToolConfig, BaseToolConfig]
+"""
+Configuration dictionary for a single tool.
+
+This replaces the previous generic ToolConfig type alias with a proper
+union of typed configurations for different tool types.
+
+Common fields across all tool types:
+- id: Unique identifier for the tool
+- type: Tool type ("python", "mcp", etc.)
+- disabled: Optional boolean to skip tool loading
+- functions: Optional list of specific functions to load
+- error: any error that occurs during tool loading
+
+Additional fields vary by tool type and are validated by the appropriate factory methods.
+"""
+
+
+class EnhancedToolSpec(TypedDict, total=False):
+    """Enhanced tool specification with original config + loaded tool data."""
+    # Original config fields (preserved)
+    id: str
+    type: Literal["python", "mcp", "mcp-stdio", "mcp-http"]
+    source_file: str
+    disabled: bool
+    error: str
+    
+    # Python tool config fields
+    module_path: str
+    functions: List[str]
+    package_path: Optional[str]
+    
+    # MCP tool config fields
+    command: Optional[List[str]]
+    args: Optional[List[str]]
+    env: Optional[Dict[str, str]]
+    url: Optional[str]
+    
+    # Enhanced fields (added during processing)
+    tools: Optional[List[Callable]]  # Loaded Python tools
+    client: Optional[Any]            # MCP client instance
+    tool_names: List[str]            # Names of available tools
 
 
 # ============================================================================
@@ -143,9 +205,9 @@ class ToolSpec(TypedDict, total=False):
     """
     Unified tool specification for all tool types.
     
-    A ToolSpec describes how to load and execute tools but does not contain
+    A ToolSpec describes how to load and configure tools but does not contain
     the actual tool instances. It serves as a bridge between tool discovery
-    and tool execution, allowing strands-agents to handle the actual tool
+    and tool configuration, allowing strands-agents to handle the actual tool
     instantiation and execution.
     
     The specification supports both standard Python tools (loaded immediately)
@@ -176,48 +238,6 @@ class ToolSpec(TypedDict, total=False):
     """
     client: Optional[Any]  # MCPClient for MCP tools, None for others
     tools: Optional[List[Tool]]  # Tool instances for standard tools, None for MCP
-
-
-# ============================================================================
-# Tool Runtime Protocols
-# ============================================================================
-
-@runtime_checkable
-class ToolExecutor(Protocol):
-    """
-    Protocol for tool execution interfaces.
-    
-    Defines the interface that tool executors must implement to participate
-    in the strands-agents tool execution system. This protocol ensures
-    compatibility across different tool sources while allowing framework-
-    specific adaptations.
-    """
-
-    def execute(self, tool_name: str, arguments: Dict[str, Any]) -> Any:
-        """
-        Execute a tool with the given arguments.
-        
-        Args:
-            tool_name: Name of the tool to execute
-            arguments: Dictionary of arguments to pass to the tool
-            
-        Returns:
-            Any: Result of tool execution
-            
-        Raises:
-            ToolExecutionError: If tool execution fails
-            ToolNotFoundError: If requested tool is not available
-        """
-        ...
-
-    def list_available_tools(self) -> List[str]:
-        """
-        List all available tools that can be executed.
-        
-        Returns:
-            List[str]: Names of available tools
-        """
-        ...
 
 
 # ============================================================================
@@ -265,60 +285,6 @@ class ConfigurationError(Exception):
             parts.append(f"Caused by: {self.original_error}")
             
         return " | ".join(parts)
-
-
-# ============================================================================
-# Tool Execution Error Types
-# ============================================================================
-
-class ToolExecutionError(Exception):
-    """
-    Exception raised when tool execution fails.
-    
-    Provides detailed context about tool execution failures including
-    the tool name, arguments, and underlying error information.
-    """
-
-    def __init__(self, tool_name: str, message: str, arguments: Optional[Dict[str, Any]] = None,
-                 original_error: Optional[Exception] = None):
-        """
-        Initialize tool execution error.
-        
-        Args:
-            tool_name: Name of the tool that failed
-            message: Human-readable error description
-            arguments: Arguments that were passed to the tool
-            original_error: Underlying exception that caused the failure
-        """
-        super().__init__(message)
-        self.tool_name = tool_name
-        self.arguments = arguments or {}
-        self.original_error = original_error
-
-
-class ToolNotFoundError(Exception):
-    """
-    Exception raised when a requested tool cannot be found.
-    
-    Used when attempting to execute a tool that is not available
-    in the current tool registry or MCP server.
-    """
-
-    def __init__(self, tool_name: str, available_tools: Optional[List[str]] = None):
-        """
-        Initialize tool not found error.
-        
-        Args:
-            tool_name: Name of the requested tool that was not found
-            available_tools: List of available tool names for reference
-        """
-        message = f"Tool '{tool_name}' not found"
-        if available_tools:
-            message += f". Available tools: {', '.join(available_tools)}"
-        
-        super().__init__(message)
-        self.tool_name = tool_name
-        self.available_tools = available_tools or []
 
 
 # ============================================================================
