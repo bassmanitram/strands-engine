@@ -193,7 +193,7 @@ class FrameworkAdapter(ABC):
         if logger.level('TRACE').no >= logger._core.min_level:
             logger.trace("FrameworkAdapter.prepare_agent_args called with system_prompt={}, messages={}, emulate_system_prompt={}, kwargs={}", system_prompt is not None, len(messages) if messages else 0, emulate_system_prompt, list(kwargs.keys()))
         
-        messages = messages or []
+        messages = self.adapt_content(messages) if messages else []
         
         # Handle system prompt emulation for frameworks that don't support it natively
         if emulate_system_prompt and system_prompt:

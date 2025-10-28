@@ -32,6 +32,7 @@ class AgentProxy:
         
         self._adapter = adapter
         self._agent_kwargs = kwargs
+
         self._agent: Optional[Agent] = None
         self._context_entered = False
     
@@ -57,6 +58,15 @@ class AgentProxy:
         if logger.level('TRACE').no >= logger._core.min_level:
             logger.trace("AgentProxy.__init__ completed - {} MCP clients, {} regular tools", len(self._mcp_client_specs), len(self._tools))
 
+    @property
+    def has_initial_messages(self) -> bool:
+        """Indicate if the agent has initial messages configured.
+        
+        Returns:
+            bool: True if initial messages are present, False otherwise
+        """
+        return True if self._agent_kwargs.get("messages", []) else False
+    
     @property
     def tool_specs(self) -> List[EnhancedToolSpec]:
         """Get the enhanced tool specifications provided to the proxy.
