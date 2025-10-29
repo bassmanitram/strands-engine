@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.1] - 2025-10-28
+
+### Fixed
+- **Initial Message Adaptation**: Fixed bug where initial messages passed to the agent were not being adapted by the framework adapter's `adapt_content()` method. This caused issues with frameworks that require specific content transformations (e.g., AWS Bedrock). The fix ensures all messages, including initial messages, are properly transformed before being passed to the Agent constructor.
+  - Modified `FrameworkAdapter.prepare_agent_args()` to call `adapt_content()` on initial messages
+  - Added `has_initial_messages` property to `AgentProxy` for checking if initial messages are configured
+  - Affects: `strands_agent_factory/adapters/base.py`, `strands_agent_factory/core/agent.py`
+
+### Technical Details
+- The bug manifested when using file uploads or initial messages with frameworks like Bedrock that require content adaptation
+- All 171 tests continue to pass with this fix
+- No breaking changes or API modifications
+
+## [1.0.0] - 2024-10-24
+
 ### Added
 - Comprehensive factory pattern for strands-agents Agent creation
 - Multi-framework support with automatic generic adapter
@@ -86,14 +101,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Technical Implementation
 - **Modern Python Architecture** - Type hints, dataclasses, async/await
-- **Comprehensive Test Suite** - 139 tests with 100% pass rate
+- **Comprehensive Test Suite** - 171 tests with 100% pass rate
 - **Resource Management** - Context managers and proper cleanup
 - **Concurrent Operations** - Thread-safe MCP server initialization
 - **Memory Efficiency** - Streaming and chunked processing
 - **Performance Optimization** - Connection pooling and caching
 
 ### Dependencies
-- **strands-agents** - Core agent framework
+- **strands-agents** - Core agent framework (pinned to 1.10.0)
 - **loguru** - Structured logging
 - **pydantic** - Data validation (via strands-agents)
 - **Optional Framework Dependencies** - Installed via extras
@@ -109,18 +124,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `[full]` - Complete installation with development tools
 - `[dev]` - Development dependencies
 
-### Breaking Changes
-- None (initial release)
-
-### Deprecated
-- None (initial release)
-
-### Removed
-- None (initial release)
-
-### Fixed
-- None (initial release)
-
 ### Security
 - Input validation for all user-provided data
 - Safe file handling with size limits
@@ -131,9 +134,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Release Notes
 
+### Version 1.0.1
+This is a patch release that fixes a bug with initial message adaptation in framework adapters. Users experiencing issues with file uploads or initial messages on frameworks like AWS Bedrock should upgrade to this version.
+
+### Version 1.0.0
 This represents the initial comprehensive release of strands-agent-factory, providing a complete factory pattern implementation for strands-agents with extensive multi-framework support, advanced tool integration, and sophisticated conversation management capabilities.
 
-The project includes a full test suite with 139 tests achieving 100% pass rate, comprehensive documentation, and working examples for all major features.
+The project includes a full test suite with 171 tests achieving 100% pass rate, comprehensive documentation, and working examples for all major features.
 
 ### Supported AI Providers
 - OpenAI (GPT-4, GPT-4o, GPT-3.5-turbo, etc.)
@@ -157,3 +164,7 @@ The project includes a full test suite with 139 tests achieving 100% pass rate, 
 - **Framework Agnostic** - Unified interface across providers
 - **Extensible Design** - Plugin architecture for customization
 - **Production Ready** - Comprehensive error handling and logging
+
+[Unreleased]: https://github.com/bassmanitram/strands-agent-factory/compare/v1.0.1...HEAD
+[1.0.1]: https://github.com/bassmanitram/strands-agent-factory/compare/v1.0.0...v1.0.1
+[1.0.0]: https://github.com/bassmanitram/strands-agent-factory/releases/tag/v1.0.0
