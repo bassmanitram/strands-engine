@@ -106,9 +106,10 @@ class AgentFactory:
         
         If callback_handler is provided in config, uses that. Otherwise,
         creates a ConfigurableCallbackHandler with the configured
-        show_tool_use and response_prefix settings.
+        show_tool_use, response_prefix, and output_printer settings.
         """
-        logger.trace("_setup_callback_handler called with callback_handler={}", self.config.callback_handler is not None)
+        logger.trace("_setup_callback_handler called with callback_handler={}, output_printer={}", 
+                    self.config.callback_handler is not None, self.config.output_printer is not None)
         
         if self.config.callback_handler is not None:
             self._callback_handler = self.config.callback_handler
@@ -116,9 +117,11 @@ class AgentFactory:
         else:
             self._callback_handler = ConfigurableCallbackHandler(
                 show_tool_use=self.config.show_tool_use,
-                response_prefix=self.config.response_prefix
+                response_prefix=self.config.response_prefix,
+                output_printer=self.config.output_printer
             )
-            logger.debug("Created ConfigurableCallbackHandler with show_tool_use={}, response_prefix='{}'", self.config.show_tool_use, self.config.response_prefix)
+            logger.debug("Created ConfigurableCallbackHandler with show_tool_use={}, response_prefix='{}', output_printer={}", 
+                        self.config.show_tool_use, self.config.response_prefix, self.config.output_printer is not None)
         
         logger.trace("_setup_callback_handler completed")
     

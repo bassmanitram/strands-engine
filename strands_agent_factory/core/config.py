@@ -80,6 +80,7 @@ class AgentFactoryConfig:
         callback_handler: Optional custom callback handler for agent events
         show_tool_use: Whether to show verbose tool execution feedback
         response_prefix: Optional prefix to display before agent responses
+        output_printer: Optional custom printer function for formatted output
     """
     
     # ========================================================================
@@ -245,8 +246,8 @@ class AgentFactoryConfig:
     Optional custom callback handler for agent events.
     
     If None, a ConfigurableCallbackHandler will be created using the
-    show_tool_use and response_prefix settings. If provided, this
-    custom handler will be used instead.
+    show_tool_use, response_prefix, and output_printer settings. If provided,
+    this custom handler will be used instead.
     """
     
     show_tool_use: bool = False
@@ -261,7 +262,30 @@ class AgentFactoryConfig:
     """
     Optional prefix to display before agent responses.
     
-    Example: "Assistant: " or "Bot: ". Only used if callback_handler is None.
+    Example: "Assistant: " or "<b>Bot:</b> ". Can contain HTML or ANSI
+    formatting codes. Only used if callback_handler is None.
+    """
+    
+    output_printer: Optional[Callable] = None
+    """
+    Optional custom printer function for formatted output.
+    
+    If None, uses standard print(). Can be set to a custom printer
+    that handles HTML/ANSI formatting (e.g., from repl-toolkit's
+    create_auto_printer()). Only used if callback_handler is None.
+    
+    The printer function should have the signature:
+        printer(text: str, **kwargs) -> None
+    
+    Where kwargs can include: end, flush, etc. (same as print()).
+    
+    Example:
+        from repl_toolkit import create_auto_printer
+        config = AgentFactoryConfig(
+            model="gpt-4o",
+            response_prefix="<b>Assistant:</b> ",
+            output_printer=create_auto_printer()  # Auto-formats HTML/ANSI
+        )
     """
 
     def __post_init__(self):
@@ -283,6 +307,7 @@ class AgentFactoryConfig:
         self._validate_tool_config_paths()
         self._validate_session_config()
         self._validate_model_config()
+        self._validate_output_printer()
         
         logger.trace("AgentFactoryConfig.__post_init__ completed")
 
@@ -537,3 +562,22 @@ class AgentFactoryConfig:
                     raise ConfigurationError(f"model_config.top_p must be a number, got {type(top_p).__name__}")
                 if not (0.0 <= top_p <= 1.0):
                     raise ConfigurationError(f"model_config.top_p must be between 0.0 and 1.0, got {top_p}")
+
+    def _validate_output_printer(self):
+        """
+        Validate output_printer parameter.
+        
+        Ensures output_printer is callable if provided.
+        
+        Raises:
+            ConfigurationError: If output_printer is not callable
+        """
+        logger.trace("_validate_output_printer called")
+        
+        if self.output_printer is not None:
+            if not callable(self.output_printer):
+                raise ConfigurationError(
+                    f"output_printer must be callable, got {type(self.output_printer).__name__}"
+                )
+        
+        logger.trace("_validate_output_printer completed successfully")

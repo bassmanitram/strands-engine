@@ -10,7 +10,7 @@ is displayed during agent execution.
 """
 
 import os
-from typing import Any, Optional
+from typing import Any, Optional, Callable
 
 from loguru import logger
 
@@ -34,11 +34,13 @@ class ConfigurableCallbackHandler:
     - Final newline after responses
     - Tool input formatting with optional truncation
     - Environment-based configuration overrides
+    - Custom output printer for formatted text (HTML/ANSI)
     
     Attributes:
         show_tool_use: Whether to display verbose tool execution details
         response_prefix: Optional prefix to print before agent responses
         max_line_length: Maximum line length for tool input display
+        output_printer: Custom printer function for formatted output
         in_message: Internal state tracking for message boundaries
         in_tool_use: Internal state tracking for tool execution phases
         tool_count: Counter for numbering tool executions
@@ -49,7 +51,8 @@ class ConfigurableCallbackHandler:
     def __init__(self, 
                  show_tool_use: Optional[bool] = False,
                  response_prefix: Optional[str] = None,
-                 max_line_length: Optional[int] = None):
+                 max_line_length: Optional[int] = None,
+                 output_printer: Optional[Callable] = None):
         """
         Initialize the callback handler with display preferences.
 
@@ -57,9 +60,12 @@ class ConfigurableCallbackHandler:
             show_tool_use: Whether to show verbose tool execution feedback (default: False)
             response_prefix: Optional prefix to print before responses (default: None)
             max_line_length: Maximum line length for tool input display (default: None)
+            output_printer: Optional custom printer function for formatted output (default: None)
+                           If None, uses standard print(). Should have signature:
+                           printer(text: str, **kwargs) -> None
         """
-        logger.trace("ConfigurableCallbackHandler.__init__ called with show_tool_use={}, response_prefix='{}', max_line_length={}", 
-                    show_tool_use, response_prefix, max_line_length)
+        logger.trace("ConfigurableCallbackHandler.__init__ called with show_tool_use={}, response_prefix='{}', max_line_length={}, output_printer={}", 
+                    show_tool_use, response_prefix, max_line_length, output_printer is not None)
         
         super().__init__()
         self.show_tool_use = show_tool_use
@@ -67,6 +73,7 @@ class ConfigurableCallbackHandler:
         self.in_tool_use = False
         self.max_line_length = max_line_length
         self.response_prefix = response_prefix
+        self.output_printer = output_printer if output_printer is not None else print
         
         # Initialize tool tracking
         self.tool_count = 0
@@ -92,12 +99,12 @@ class ConfigurableCallbackHandler:
         logger.trace("_format_and_print_tool_input called with tool_name='{}', input_type={}", 
                     tool_name, type(tool_input).__name__)
         
-        print(f"\nTool #{self.tool_count}: {tool_name}")
+        self.output_printer(f"\nTool #{self.tool_count}: {tool_name}")
         print_structured_data(
             tool_input, 
             1, 
             -1 if self.disable_truncation else self.max_line_length, 
-            printer=print
+            printer=self.output_printer
         )
         
         logger.trace("_format_and_print_tool_input completed")
@@ -141,23 +148,23 @@ class ConfigurableCallbackHandler:
             logger.trace("Starting new message, applying response prefix")
             self.in_message = True
             if self.response_prefix:
-                print(self.response_prefix, end="", flush=True)
+                self.output_printer(self.response_prefix, end="", flush=True)
 
         # Handle message completion
         if "messageStop" in event and self.in_message:
             logger.trace("Message completed, resetting state")
             self.in_message = False
-            print(flush=True)  # Print the final newline
+            self.output_printer("", flush=True)  # Print the final newline
 
         # Print reasoning text
         if reasoningText:
             logger.trace("Printing reasoning text")
-            print(reasoningText, end="")
+            self.output_printer(reasoningText, end="")
 
         # Print response data
         if data:
             logger.trace("Printing response data (complete={})", complete)
-            print(data, end="" if not complete else "\n")
+            self.output_printer(data, end="" if not complete else "\n")
 
         # Handle tool usage display based on configuration
         if self.show_tool_use:
@@ -182,6 +189,6 @@ class ConfigurableCallbackHandler:
         # Handle completion
         if complete and data:
             logger.trace("Handling completion with data")
-            print("\n")
+            self.output_printer("\n")
         
         logger.trace("ConfigurableCallbackHandler.__call__ completed")
