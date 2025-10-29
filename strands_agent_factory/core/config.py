@@ -205,8 +205,33 @@ class AgentFactoryConfig:
     """
     Optional separate model for summarization.
     
-    If None, uses the same model as the main agent. Can specify
-    a different (usually cheaper/faster) model for summarization tasks.
+    Uses the same format as the model parameter. If None, uses the same model
+    as the main agent. Can specify a different (usually cheaper/faster) model
+    for summarization tasks.
+    
+    Examples:
+        - "gpt-4o-mini" (OpenAI)
+        - "anthropic:claude-3-haiku-20240307" (Anthropic)
+        - "openai:gpt-3.5-turbo" (OpenAI with explicit framework)
+    """
+    
+    summarization_model_config: Optional[Dict[str, Any]] = None
+    """
+    Framework-specific configuration for the summarization model.
+    
+    When conversation_manager_type is "summarizing", a separate summarization
+    agent is always created using:
+    - Model: summarization_model (or model if not specified)
+    - Config: summarization_model_config (or {} if not specified)
+    
+    This allows using the same model with different configuration for
+    summarization (e.g., lower temperature, reduced max_tokens).
+    
+    Passed directly to the underlying model implementation without validation.
+    Examples: temperature, max_tokens, top_p, etc.
+    
+    Note: If agent creation fails and summarization_model_config was specified,
+    an InitializationError is raised (explicit requirements must be met).
     """
     
     custom_summarization_prompt: Optional[str] = None

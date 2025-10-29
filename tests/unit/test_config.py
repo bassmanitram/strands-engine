@@ -477,3 +477,118 @@ class TestAgentFactoryConfig:
         assert config.emulate_system_prompt is True
         assert config.show_tool_use is True
         assert config.response_prefix == "Bot: "
+    def test_summarization_model_config_basic(self):
+        """Test configuration with summarization_model_config."""
+        summarization_config = {"temperature": 0.3, "max_tokens": 500}
+        config = AgentFactoryConfig(
+            model="openai:gpt-4o",
+            conversation_manager_type="summarizing",
+            summarization_model="openai:gpt-3.5-turbo",
+            summarization_model_config=summarization_config
+        )
+        
+        assert config.summarization_model == "openai:gpt-3.5-turbo"
+        assert config.summarization_model_config == summarization_config
+        assert config.summarization_model_config["temperature"] == 0.3
+        assert config.summarization_model_config["max_tokens"] == 500
+
+    def test_summarization_model_config_none_default(self):
+        """Test that summarization_model_config defaults to None."""
+        config = AgentFactoryConfig(
+            model="openai:gpt-4o",
+            summarization_model="openai:gpt-3.5-turbo"
+        )
+        
+        assert config.summarization_model == "openai:gpt-3.5-turbo"
+        assert config.summarization_model_config is None
+
+    def test_summarization_model_config_without_summarization_model(self):
+        """Test summarization_model_config can be set even without summarization_model."""
+        # This is allowed - config will just be ignored if no summarization model is used
+        config = AgentFactoryConfig(
+            model="openai:gpt-4o",
+            summarization_model_config={"temperature": 0.5}
+        )
+        
+        assert config.summarization_model is None
+        assert config.summarization_model_config == {"temperature": 0.5}
+
+    def test_summarization_model_config_empty_dict(self):
+        """Test summarization_model_config with empty dictionary."""
+        config = AgentFactoryConfig(
+            model="openai:gpt-4o",
+            summarization_model="openai:gpt-3.5-turbo",
+            summarization_model_config={}
+        )
+        
+        assert config.summarization_model_config == {}
+
+    def test_summarization_model_config_framework_specific_params(self):
+        """Test summarization_model_config with various framework-specific parameters."""
+        # Test with various parameters that might be framework-specific
+        config = AgentFactoryConfig(
+            model="openai:gpt-4o",
+            summarization_model="anthropic:claude-3-haiku",
+            summarization_model_config={
+                "temperature": 0.2,
+                "max_tokens": 1000,
+                "top_p": 0.9,
+                "top_k": 50,  # Anthropic-specific
+                "stop_sequences": ["\n\n"],  # Framework-specific
+                "custom_param": "value"  # Any custom parameter
+            }
+        )
+        
+        assert config.summarization_model_config["temperature"] == 0.2
+        assert config.summarization_model_config["max_tokens"] == 1000
+        assert config.summarization_model_config["top_p"] == 0.9
+        assert config.summarization_model_config["top_k"] == 50
+        assert config.summarization_model_config["stop_sequences"] == ["\n\n"]
+        assert config.summarization_model_config["custom_param"] == "value"
+
+    def test_summarization_model_config_no_validation(self):
+        """Test that summarization_model_config is not validated (passed through as-is)."""
+        # These would fail validation for model_config, but should work for summarization_model_config
+        config = AgentFactoryConfig(
+            model="openai:gpt-4o",
+            summarization_model="openai:gpt-3.5-turbo",
+            summarization_model_config={
+                "temperature": 5.0,  # Out of normal range
+                "max_tokens": -100,  # Negative
+                "weird_param": [1, 2, 3],  # Non-standard type
+                "another_param": {"nested": "dict"}  # Nested structure
+            }
+        )
+        
+        # Should accept any values without validation
+        assert config.summarization_model_config["temperature"] == 5.0
+        assert config.summarization_model_config["max_tokens"] == -100
+        assert config.summarization_model_config["weird_param"] == [1, 2, 3]
+        assert config.summarization_model_config["another_param"] == {"nested": "dict"}
+
+    def test_full_config_with_both_model_configs(self):
+        """Test configuration with both model_config and summarization_model_config."""
+        config = AgentFactoryConfig(
+            model="openai:gpt-4o",
+            model_config={"temperature": 0.7, "max_tokens": 4000},
+            conversation_manager_type="summarizing",
+            summarization_model="openai:gpt-3.5-turbo",
+            summarization_model_config={"temperature": 0.3, "max_tokens": 1000}
+        )
+        
+        # Both configs should be independent
+        assert config.model_config == {"temperature": 0.7, "max_tokens": 4000}
+        assert config.summarization_model_config == {"temperature": 0.3, "max_tokens": 1000}
+        assert config.model_config["temperature"] != config.summarization_model_config["temperature"]
+
+    def test_summarization_model_config_backward_compatibility(self):
+        """Test backward compatibility - old code without summarization_model_config still works."""
+        # This is how code would have looked before the feature
+        config = AgentFactoryConfig(
+            model="openai:gpt-4o",
+            conversation_manager_type="summarizing",
+            summarization_model="openai:gpt-3.5-turbo"
+        )
+        
+        assert config.summarization_model == "openai:gpt-3.5-turbo"
+        assert config.summarization_model_config is None  # Defaults to None

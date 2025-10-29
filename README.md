@@ -245,6 +245,7 @@ class MyProviderAdapter(FrameworkAdapter):
 | `preserve_recent_messages` | `int` | Messages to preserve in summarizing mode | `10` |
 | `summary_ratio` | `float` | Ratio of messages to summarize (0.1-0.8) | `0.3` |
 | `summarization_model` | `Optional[str]` | Optional separate model for summarization | `None` |
+| `summarization_model_config` | `Optional[Dict[str, Any]]` | Framework-specific config for summarization model | `None` |
 | `custom_summarization_prompt` | `Optional[str]` | Custom prompt for summarization | `None` |
 | `should_truncate_results` | `bool` | Whether to truncate tool results on overflow | `True` |
 | `emulate_system_prompt` | `bool` | Emulate system prompt for unsupported models | `False` |
@@ -365,7 +366,8 @@ config = AgentFactoryConfig(
     conversation_manager_type="summarizing",
     preserve_recent_messages=10,  # Never summarize last 10
     summary_ratio=0.3,            # Summarize 30% of older messages
-    summarization_model="gpt-4o-mini"  # Use cheaper model for summaries
+    summarization_model="gpt-4o-mini",  # Use cheaper model for summaries
+    summarization_model_config={"temperature": 0.3, "max_tokens": 1000}  # Config for summarization model
 )
 ```
 

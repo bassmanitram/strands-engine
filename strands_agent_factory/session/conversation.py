@@ -16,7 +16,7 @@ for the summarizing strategy while providing graceful fallbacks when
 configuration or creation fails.
 """
 
-from typing import Optional
+from typing import Any, Dict, Optional
 from loguru import logger
 
 from strands.agent.conversation_manager import (
@@ -25,9 +25,13 @@ from strands.agent.conversation_manager import (
     SlidingWindowConversationManager,
     SummarizingConversationManager
 )
+from strands.agent.conversation_manager.summarizing_conversation_manager import (
+    DEFAULT_SUMMARIZATION_PROMPT
+)
 from strands import Agent
 
 from strands_agent_factory.core.config import AgentFactoryConfig
+from strands_agent_factory.core.exceptions import InitializationError
 from strands_agent_factory.adapters.base import load_framework_adapter
 
 
@@ -70,16 +74,30 @@ class ConversationManagerFactory:
         2. Sliding Window: Keep only recent messages within window size
         3. Summarizing: Summarize older messages when approaching limits
         
+        For the summarizing strategy:
+        - Always attempts to create a separate summarization agent
+        - Uses summarization_model (or model if not specified)
+        - Uses summarization_model_config (or {} if not specified)
+        - If agent creation fails and user specified summarization_model or
+          summarization_model_config, raises InitializationError
+        - If agent creation fails and user did NOT specify either, falls back
+          to using main agent for summarization
+        
         Args:
             config: AgentFactoryConfig containing conversation manager settings
             
         Returns:
             ConversationManager: Configured conversation manager instance
             
+        Raises:
+            InitializationError: If summarization agent creation fails when user
+                               explicitly specified summarization_model or
+                               summarization_model_config
+            
         Note:
-            If creation fails for any reason, falls back to NullConversationManager
-            to ensure the agent can still function, albeit without conversation
-            management features.
+            If creation fails for any reason (except explicit summarization
+            requirements), falls back to NullConversationManager to ensure
+            the agent can still function.
         """
         logger.trace("create_conversation_manager called with type: {}", config.conversation_manager_type)
         
@@ -96,35 +114,7 @@ class ConversationManagerFactory:
                 )
 
             elif config.conversation_manager_type == "summarizing":
-                logger.debug("Creating SummarizingConversationManager with summary_ratio={}", config.summary_ratio)
-
-                # Create optional summarization agent if a different model is specified
-                summarization_agent = None
-                if config.summarization_model:
-                    logger.debug("Creating summarization agent with model: {}", config.summarization_model)
-                    try:
-                        summarization_agent = (
-                            ConversationManagerFactory
-                            ._create_summarization_agent(
-                                config.summarization_model)
-                        )
-                        if summarization_agent:
-                            logger.info("Successfully created summarization agent")
-                        else:
-                            logger.warning("Failed to create summarization agent, proceeding without one")
-                    except Exception as e:
-                        logger.error("Error creating summarization agent: {}", e)
-                        logger.info("Proceeding without summarization agent")
-                        summarization_agent = None
-
-                # Create the summarizing conversation manager
-                logger.debug("Creating SummarizingConversationManager instance")
-                result = SummarizingConversationManager(
-                    summary_ratio=config.summary_ratio,
-                    preserve_recent_messages=config.preserve_recent_messages,
-                    summarization_agent=summarization_agent,
-                    summarization_system_prompt=config.custom_summarization_prompt
-                )
+                result = ConversationManagerFactory._create_summarizing_manager(config)
 
             else:
                 logger.error("Unknown conversation manager type: {}", config.conversation_manager_type)
@@ -134,6 +124,9 @@ class ConversationManagerFactory:
             logger.trace("create_conversation_manager completed successfully")
             return result
 
+        except InitializationError:
+            # Re-raise InitializationError - don't fallback for explicit requirements
+            raise
         except Exception as e:
             logger.error("Failed to create conversation manager: {}", e)
             logger.info("Falling back to NullConversationManager")
@@ -143,7 +136,121 @@ class ConversationManagerFactory:
             return result
 
     @staticmethod
-    def _create_summarization_agent(model_string: str) -> Optional[Agent]:
+    def _create_summarizing_manager(config: AgentFactoryConfig) -> SummarizingConversationManager:
+        """
+        Create a summarizing conversation manager with optional separate agent.
+        
+        Always attempts to create a separate summarization agent to allow applying
+        summarization_model_config even when using the same model as the main agent.
+        
+        Args:
+            config: AgentFactoryConfig containing summarization settings
+            
+        Returns:
+            SummarizingConversationManager: Configured manager instance
+            
+        Raises:
+            InitializationError: If agent creation fails and user explicitly
+                               specified summarization_model or summarization_model_config
+        """
+        logger.debug("Creating SummarizingConversationManager with summary_ratio={}", config.summary_ratio)
+
+        # Determine if user explicitly requested summarization-specific settings
+        has_explicit_requirements = bool(config.summarization_model or config.summarization_model_config)
+        
+        # Always attempt to create a separate summarization agent
+        model_to_use = config.summarization_model if config.summarization_model else config.model
+        
+        logger.debug("Creating summarization agent with model: {}", model_to_use)
+        try:
+            summarization_agent = (
+                ConversationManagerFactory
+                ._create_summarization_agent(
+                    model_to_use,
+                    config.summarization_model_config or {},
+                    config.custom_summarization_prompt)
+            )
+            
+            if summarization_agent:
+                logger.info("Successfully created summarization agent")
+                # Create manager with agent, no system prompt (agent has it)
+                return SummarizingConversationManager(
+                    summary_ratio=config.summary_ratio,
+                    preserve_recent_messages=config.preserve_recent_messages,
+                    summarization_agent=summarization_agent
+                )
+            else:
+                # Agent creation returned None - handle based on whether requirements were explicit
+                return ConversationManagerFactory._handle_agent_creation_failure(
+                    config, model_to_use, has_explicit_requirements, error=None
+                )
+                
+        except InitializationError:
+            # Re-raise InitializationError as-is
+            raise
+        except Exception as e:
+            # Exception during creation - handle based on whether requirements were explicit
+            return ConversationManagerFactory._handle_agent_creation_failure(
+                config, model_to_use, has_explicit_requirements, error=e
+            )
+
+    @staticmethod
+    def _handle_agent_creation_failure(
+        config: AgentFactoryConfig,
+        model_to_use: str,
+        has_explicit_requirements: bool,
+        error: Optional[Exception]
+    ) -> SummarizingConversationManager:
+        """
+        Handle summarization agent creation failure.
+        
+        Args:
+            config: AgentFactoryConfig containing settings
+            model_to_use: Model string that was attempted
+            has_explicit_requirements: Whether user specified summarization_model
+                                      or summarization_model_config
+            error: Optional exception that caused the failure
+            
+        Returns:
+            SummarizingConversationManager: Fallback manager using main agent
+            
+        Raises:
+            InitializationError: If has_explicit_requirements is True
+        """
+        if has_explicit_requirements:
+            # User explicitly requested summarization-specific settings - must error
+            if error:
+                logger.error("Error creating summarization agent: {}", error)
+                raise InitializationError(
+                    f"Failed to create summarization agent: {error}. "
+                    f"Cannot fulfill explicit summarization configuration requirements."
+                ) from error
+            else:
+                raise InitializationError(
+                    f"Failed to create summarization agent with model '{model_to_use}'. "
+                    f"Cannot fulfill explicit summarization configuration requirements."
+                )
+        else:
+            # No explicit requirements - fallback to using main agent
+            if error:
+                logger.error("Error creating summarization agent: {}", error)
+            else:
+                logger.warning("Failed to create summarization agent")
+            
+            logger.info("Falling back to using main agent for summarization")
+            return SummarizingConversationManager(
+                summary_ratio=config.summary_ratio,
+                preserve_recent_messages=config.preserve_recent_messages,
+                summarization_agent=None,
+                summarization_system_prompt=config.custom_summarization_prompt
+            )
+
+    @staticmethod
+    def _create_summarization_agent(
+        model_string: str,
+        model_config: Optional[Dict[str, Any]] = None,
+        custom_summarization_prompt: Optional[str] = None
+    ) -> Optional[Agent]:
         """
         Create a separate agent for summarization using a different model.
         
@@ -153,7 +260,7 @@ class ConversationManagerFactory:
         conversation.
         
         The summarization agent is configured with:
-        - A simple system prompt for summarization tasks
+        - A system prompt for summarization tasks (custom or default)
         - No tools (lightweight operation)
         - No callback handler (silent operation)
         - Minimal configuration for efficiency
@@ -161,6 +268,11 @@ class ConversationManagerFactory:
         Args:
             model_string: Model identifier for the summarization agent in format
                          "framework:model_id" (e.g., "openai:gpt-3.5-turbo")
+            model_config: Optional framework-specific configuration for the
+                         summarization model. Passed directly to adapter without
+                         validation. If None, uses empty dict {}.
+            custom_summarization_prompt: Optional custom system prompt for summarization.
+                         If None, uses DEFAULT_SUMMARIZATION_PROMPT from strands.
             
         Returns:
             Optional[Agent]: Configured summarization agent, or None if creation fails
@@ -169,12 +281,17 @@ class ConversationManagerFactory:
             No exceptions - all errors are caught and logged, returning None
             
         Example:
-            >>> agent = ConversationManagerFactory._create_summarization_agent("openai:gpt-3.5-turbo")
+            >>> agent = ConversationManagerFactory._create_summarization_agent(
+            ...     "openai:gpt-3.5-turbo",
+            ...     {"temperature": 0.3, "max_tokens": 1000},
+            ...     "Custom summarization prompt"
+            ... )
             >>> if agent:
             ...     # Use agent for summarization
             ...     pass
         """
-        logger.trace("_create_summarization_agent called with model_string: {}", model_string)
+        logger.trace("_create_summarization_agent called with model_string: {}, model_config: {}, custom_prompt: {}", 
+                     model_string, model_config, custom_summarization_prompt is not None)
         
         try:
             logger.debug("Loading summarization model: {}", model_string)
@@ -196,9 +313,9 @@ class ConversationManagerFactory:
                 logger.trace("_create_summarization_agent returning None (adapter load failed)")
                 return None
             
-            # Load the model
-            logger.trace("Loading model with adapter")
-            model = adapter.load_model(model_id, model_config={})
+            # Load the model with config
+            logger.trace("Loading model with adapter and config")
+            model = adapter.load_model(model_id, model_config or {})
 
             if not model:
                 logger.warning("Failed to create summarization model: {}", model_string)
@@ -207,10 +324,19 @@ class ConversationManagerFactory:
 
             logger.debug("Summarization model loaded successfully")
 
+            # Determine system prompt: use custom if provided, otherwise use default from strands
+            system_prompt = (
+                custom_summarization_prompt 
+                if custom_summarization_prompt is not None 
+                else DEFAULT_SUMMARIZATION_PROMPT
+            )
+            logger.trace("Using {} summarization prompt", 
+                        "custom" if custom_summarization_prompt is not None else "default")
+
             # Create agent args for summarization agent
             logger.trace("Preparing agent arguments for summarization agent")
             agent_args = adapter.prepare_agent_args(
-                system_prompt="You are a conversation summarizer.",
+                system_prompt=system_prompt,
                 messages=[],
                 emulate_system_prompt=False
             )
