@@ -7,6 +7,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.1.0] - 2025-10-29
+
+### Added
+- **Summarization Model Configuration**: New `summarization_model_config` parameter in `AgentFactoryConfig` allows passing framework-specific configuration to the summarization model. This enables using the same model with different settings (e.g., lower temperature, reduced max_tokens) for summarization tasks.
+  - Always creates a separate summarization agent when `conversation_manager_type` is "summarizing"
+  - Uses `summarization_model` (defaults to main `model`) with `summarization_model_config` (defaults to `{}`)
+  - Raises `InitializationError` if agent creation fails when explicit summarization settings are specified
+  - Falls back gracefully to using main agent if no explicit summarization settings were provided
+
+### Fixed
+- **Custom Summarization Prompt**: Fixed bug where `custom_summarization_prompt` was being passed to `SummarizingConversationManager` where it was ignored. Now correctly applied to the summarization agent's system prompt.
+  - System prompt is set on the agent itself during creation
+  - Uses `custom_summarization_prompt` if provided, else `DEFAULT_SUMMARIZATION_PROMPT` from strands
+  - No longer passes `summarization_system_prompt` to `SummarizingConversationManager` when agent is provided
+
+### Changed
+- **Summarization Agent Creation**: Refactored conversation manager factory to always create a separate summarization agent for the summarizing strategy, enabling different model configurations even when using the same model.
+  - Extracted `_create_summarizing_manager()` method for cleaner code organization
+  - Centralized error handling in `_handle_agent_creation_failure()` method (DRY principle)
+  - Improved error messages for explicit requirement failures
+
+### Documentation
+- Updated `summarization_model` docstring to clarify it uses the same format as the `model` parameter
+- Updated `summarization_model_config` docstring to explain always-create-agent behavior
+- Added comprehensive examples showing same-model-different-config usage
+
+### Technical Details
+- Added 5 new tests for summarization agent creation logic
+- All 184 tests pass
+- No breaking changes to existing API
+- Backward compatible with existing configurations
+
 ## [1.0.1] - 2025-10-28
 
 ### Fixed
@@ -134,6 +166,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Release Notes
 
+### Version 1.1.0
+This minor release adds support for configuring the summarization model independently from the main model, and fixes a bug where custom summarization prompts were not being applied. The new `summarization_model_config` parameter enables cost optimization by using the same model with different settings (e.g., lower max_tokens) for summarization tasks.
+
+**Key Features:**
+- Configure summarization model independently (temperature, max_tokens, etc.)
+- Use same model with different config for summarization
+- Custom summarization prompts now work correctly
+- Explicit error handling when summarization requirements can't be met
+
+**Breaking Changes:** None - fully backward compatible
+
 ### Version 1.0.1
 This is a patch release that fixes a bug with initial message adaptation in framework adapters. Users experiencing issues with file uploads or initial messages on frameworks like AWS Bedrock should upgrade to this version.
 
@@ -165,6 +208,7 @@ The project includes a full test suite with 171 tests achieving 100% pass rate, 
 - **Extensible Design** - Plugin architecture for customization
 - **Production Ready** - Comprehensive error handling and logging
 
-[Unreleased]: https://github.com/bassmanitram/strands-agent-factory/compare/v1.0.1...HEAD
+[Unreleased]: https://github.com/bassmanitram/strands-agent-factory/compare/v1.1.0...HEAD
+[1.1.0]: https://github.com/bassmanitram/strands-agent-factory/compare/v1.0.1...v1.1.0
 [1.0.1]: https://github.com/bassmanitram/strands-agent-factory/compare/v1.0.0...v1.0.1
 [1.0.0]: https://github.com/bassmanitram/strands-agent-factory/releases/tag/v1.0.0
