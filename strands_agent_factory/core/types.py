@@ -53,7 +53,7 @@ configuration. The actual type depends on the specific framework being used.
 class BaseToolConfig(TypedDict, total=False):
     """Base tool configuration loaded from files."""
     id: str
-    type: Literal["python", "mcp", "mcp-stdio", "mcp-http"]
+    type: Literal["python", "mcp", "mcp-stdio", "mcp-http", "a2a"]
     source_file: str
     disabled: bool
     error: str  # Present if config loading failed
@@ -78,7 +78,16 @@ class MCPToolConfig(BaseToolConfig):
     url: Optional[str]            # For HTTP transport
 
 
-ToolConfig = Union[PythonToolConfig, MCPToolConfig, BaseToolConfig]
+class A2AToolConfig(BaseToolConfig):
+    """A2A tool configuration."""
+    type: Literal["a2a"]
+    urls: List[str]
+    timeout: Optional[int]
+    webhook_url: Optional[str]
+    webhook_token: Optional[str]
+
+
+ToolConfig = Union[PythonToolConfig, MCPToolConfig, A2AToolConfig, BaseToolConfig]
 """
 Configuration dictionary for a single tool.
 
@@ -87,9 +96,9 @@ union of typed configurations for different tool types.
 
 Common fields across all tool types:
 - id: Unique identifier for the tool
-- type: Tool type ("python", "mcp", etc.)
+- type: Tool type ("python", "mcp", "a2a", etc.)
 - disabled: Optional boolean to skip tool loading
-- functions: Optional list of specific functions to load
+- functions: Optional list of specific functions to load (Python/MCP only)
 - error: any error that occurs during tool loading
 
 Additional fields vary by tool type and are validated by the appropriate factory methods.
@@ -100,7 +109,7 @@ class EnhancedToolSpec(TypedDict, total=False):
     """Enhanced tool specification with original config + loaded tool data."""
     # Original config fields (preserved)
     id: str
-    type: Literal["python", "mcp", "mcp-stdio", "mcp-http"]
+    type: Literal["python", "mcp", "mcp-stdio", "mcp-http", "a2a"]
     source_file: str
     disabled: bool
     error: str
@@ -116,8 +125,14 @@ class EnhancedToolSpec(TypedDict, total=False):
     env: Optional[Dict[str, str]]
     url: Optional[str]
     
+    # A2A tool config fields
+    urls: Optional[List[str]]
+    timeout: Optional[int]
+    webhook_url: Optional[str]
+    webhook_token: Optional[str]
+    
     # Enhanced fields (added during processing)
-    tools: Optional[List[Callable]]  # Loaded Python tools
+    tools: Optional[List[Callable]]  # Loaded Python/A2A tools
     client: Optional[Any]            # MCP client instance
     tool_names: List[str]            # Names of available tools
 

@@ -23,6 +23,7 @@ keywords = [
     "ollama",
     "bedrock",
     "mcp",
+    "a2a",
     "tools"
 ]
 classifiers = [
@@ -53,6 +54,7 @@ dependencies = [
 dev = [
     "pytest>=7.0.0",
     "pytest-asyncio>=0.21.0",
+    "pytest-cov>=4.0.0",
     "black>=23.0.0",
     "isort>=5.12.0",
     "mypy>=1.0.0",
@@ -78,12 +80,19 @@ bedrock = [
 tools = [
     "strands-agents-tools",
 ]
+# A2A (Agent-to-Agent) support
+a2a = [
+    "strands-agents-tools[a2a_client]>=0.2.10",
+]
 # Convenience extras
 all-providers = [
     "strands-agents[litellm,anthropic,openai,ollama,bedrock]==1.10.0",
 ]
+all-tools = [
+    "strands-agent-factory[tools,a2a]",
+]
 full = [
-    "strands-agent-factory[all-providers,tools,dev]",
+    "strands-agent-factory[all-providers,all-tools,dev]",
 ]
 
 [project.urls]
@@ -94,6 +103,7 @@ Issues = "https://github.com/bassmanitram/strands-agent-factory/issues"
 
 [project.scripts]
 strands-chatbot = "strands_agent_factory.scripts.chatbot:main"
+strands-a2a-server = "strands_agent_factory.scripts.a2a_server:main"
 
 [tool.setuptools.packages.find]
 where = ["."]
