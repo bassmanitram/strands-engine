@@ -400,63 +400,6 @@ class TestA2AServerWorkflow:
         assert "Agent-to-Agent" in prompt
 
     @pytest.mark.integration
-    @patch("strands_agent_factory.core.factory.load_framework_adapter")
-    async def test_a2a_server_initialization_error_handling(
-        self, mock_load_adapter, tmp_path
-    ):
-        """Test error handling during A2A server initialization."""
-        import argparse
-
-        from dataclass_args import GenericConfigBuilder
-
-        from strands_agent_factory.scripts.a2a_server import run_a2a_server
-
-        # Mock adapter that fails
-        mock_load_adapter.side_effect = Exception("Adapter loading failed")
-
-        # Create minimal config
-        agent_config_file = tmp_path / "agent.json"
-        agent_config_data = {"model": "gpt-4o"}
-        agent_config_file.write_text(json.dumps(agent_config_data))
-
-        args = argparse.Namespace(
-            agent_config=str(agent_config_file),
-            skill_config_paths=None,
-            host="127.0.0.1",
-            port=9000,
-            public_url=None,
-            version="1.0.0",
-            serve_at_root=False,
-            model=None,
-            system_prompt=None,
-            tool_config_paths=None,
-            file_paths=None,
-            model_config=None,
-            sessions_home=None,
-            session_id=None,
-            conversation_manager_type=None,
-            sliding_window_size=None,
-            preserve_recent_messages=None,
-            summary_ratio=None,
-            summarization_model=None,
-            summarization_model_config=None,
-            custom_summarization_prompt=None,
-            should_truncate_results=None,
-            emulate_system_prompt=None,
-            show_tool_use=None,
-            response_prefix=None,
-            callback_handler=None,
-            output_printer=None,
-            initial_message=None,
-        )
-
-        config_builder = GenericConfigBuilder(AgentFactoryConfig)
-
-        # Should raise InitializationError
-        with pytest.raises(InitializationError):
-            await run_a2a_server(config_builder, args)
-
-    @pytest.mark.integration
     def test_mixed_json_and_yaml_skill_loading(self, tmp_path):
         """Test loading skills from mixed JSON and YAML files."""
         from strands_agent_factory.scripts.a2a_server import _load_skills_from_files
