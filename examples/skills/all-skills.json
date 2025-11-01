@@ -1,0 +1,20 @@
+[
+  {
+    "name": "Math",
+    "id": "math",
+    "description": "Perform mathematical calculations and analysis",
+    "tags": ["math", "calculation"]
+  },
+  {
+    "name": "Coding",
+    "id": "coding",
+    "description": "Write, debug, and analyze code",
+    "tags": ["code", "programming"]
+  },
+  {
+    "name": "Research",
+    "id": "research",
+    "description": "Search and summarize information",
+    "tags": ["research", "search"]
+  }
+]

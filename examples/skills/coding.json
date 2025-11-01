@@ -1,0 +1,15 @@
+{
+  "name": "Code Generation and Analysis",
+  "id": "coding",
+  "description": "Write, debug, analyze, and explain code in multiple programming languages including Python, JavaScript, Java, and more",
+  "tags": ["programming", "coding", "development", "debugging", "code-review"],
+  "examples": [
+    "Write a Python function to sort a list using quicksort",
+    "Debug this JavaScript error: TypeError: Cannot read property 'length' of undefined",
+    "Explain how recursion works with a simple example",
+    "Review this code for potential security vulnerabilities",
+    "Optimize this algorithm for better performance"
+  ],
+  "inputModes": ["text", "code"],
+  "outputModes": ["text", "code"]
+}

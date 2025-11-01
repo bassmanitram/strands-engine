@@ -5,7 +5,7 @@ This package provides a configuration-driven factory pattern for creating and ma
 strands-agents Agent instances. It serves as a clean abstraction layer that handles:
 
 - Model configuration and loading across multiple AI frameworks
-- Tool discovery, loading, and lifecycle management  
+- Tool discovery, loading, and lifecycle management
 - Session persistence and conversation management
 - Framework-specific adaptations
 
@@ -20,21 +20,23 @@ Example:
     Basic agent creation::
 
         from strands_agent_factory import AgentFactoryConfig, AgentFactory
-        
+
         config = AgentFactoryConfig(
             model="gpt-4o",
             system_prompt="You are a helpful assistant."
         )
-        
+
         factory = AgentFactory(config)
         await factory.initialize()
         agent = factory.create_agent()
 """
-import nest_asyncio; 
+
+import nest_asyncio
+
 nest_asyncio.apply()
 
 from .core.config import AgentFactoryConfig
-from .core.factory import AgentFactory  
+from .core.factory import AgentFactory
 
 __version__ = "1.1.0"
 

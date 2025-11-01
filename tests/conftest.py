@@ -6,11 +6,11 @@ used across the test suite.
 """
 
 import os
-import tempfile
 import shutil
+import tempfile
 from pathlib import Path
-from typing import Dict, Any, List
-from unittest.mock import Mock, MagicMock
+from typing import Any, Dict, List
+from unittest.mock import MagicMock, Mock
 
 import pytest
 from loguru import logger
@@ -18,22 +18,16 @@ from loguru import logger
 from strands_agent_factory.core.config import AgentFactoryConfig
 from strands_agent_factory.core.types import ToolConfig, ToolSpec
 
-
 # ============================================================================
 # Test Configuration
 # ============================================================================
 
+
 def pytest_configure(config):
     """Configure pytest with custom markers and settings."""
-    config.addinivalue_line(
-        "markers", "unit: mark test as a unit test"
-    )
-    config.addinivalue_line(
-        "markers", "integration: mark test as an integration test"
-    )
-    config.addinivalue_line(
-        "markers", "slow: mark test as slow running"
-    )
+    config.addinivalue_line("markers", "unit: mark test as a unit test")
+    config.addinivalue_line("markers", "integration: mark test as an integration test")
+    config.addinivalue_line("markers", "slow: mark test as slow running")
     config.addinivalue_line(
         "markers", "requires_network: mark test as requiring network access"
     )
@@ -48,7 +42,7 @@ def pytest_collection_modifyitems(config, items):
         # Mark unit tests
         if "unit" in str(item.fspath):
             item.add_marker(pytest.mark.unit)
-        
+
         # Mark integration tests
         if "integration" in str(item.fspath):
             item.add_marker(pytest.mark.integration)
@@ -58,21 +52,22 @@ def pytest_collection_modifyitems(config, items):
 # Logging Configuration
 # ============================================================================
 
+
 @pytest.fixture(autouse=True)
 def configure_test_logging():
     """Configure logging for tests with appropriate levels."""
     # Remove default logger
     logger.remove()
-    
+
     # Add test-specific logger with higher level to reduce noise
     logger.add(
         lambda msg: None,  # Suppress output during tests
         level="WARNING",
-        format="{time} | {level} | {name}:{function}:{line} - {message}"
+        format="{time} | {level} | {name}:{function}:{line} - {message}",
     )
-    
+
     yield
-    
+
     # Cleanup
     logger.remove()
 
@@ -80,6 +75,7 @@ def configure_test_logging():
 # ============================================================================
 # Temporary Directory Fixtures
 # ============================================================================
+
 
 @pytest.fixture
 def temp_dir():
@@ -101,18 +97,18 @@ def temp_file(temp_dir):
 def temp_json_file(temp_dir):
     """Create a temporary JSON file for testing."""
     import json
-    
+
     file_path = temp_dir / "test_config.json"
     test_data = {
         "id": "test_tool",
         "type": "python",
         "module_path": "test.module",
-        "functions": ["test_function"]
+        "functions": ["test_function"],
     }
-    
-    with open(file_path, 'w') as f:
+
+    with open(file_path, "w") as f:
         json.dump(test_data, f)
-    
+
     return file_path
 
 
@@ -120,24 +116,25 @@ def temp_json_file(temp_dir):
 def temp_yaml_file(temp_dir):
     """Create a temporary YAML file for testing."""
     import yaml
-    
+
     file_path = temp_dir / "test_config.yaml"
     test_data = {
         "id": "test_tool_yaml",
         "type": "mcp",
         "command": "test-server",
-        "functions": ["test_function"]
+        "functions": ["test_function"],
     }
-    
-    with open(file_path, 'w') as f:
+
+    with open(file_path, "w") as f:
         yaml.dump(test_data, f)
-    
+
     return file_path
 
 
 # ============================================================================
 # Configuration Fixtures
 # ============================================================================
+
 
 @pytest.fixture
 def basic_config():
@@ -146,7 +143,7 @@ def basic_config():
         model="anthropic:claude-3-5-sonnet",
         system_prompt="You are a helpful assistant.",
         conversation_manager_type="sliding_window",
-        sliding_window_size=20
+        sliding_window_size=20,
     )
 
 
@@ -156,7 +153,7 @@ def config_with_tools(temp_json_file):
     return AgentFactoryConfig(
         model="anthropic:claude-3-5-sonnet",
         tool_config_paths=[str(temp_json_file)],
-        conversation_manager_type="null"
+        conversation_manager_type="null",
     )
 
 
@@ -166,7 +163,7 @@ def config_with_files(temp_file):
     return AgentFactoryConfig(
         model="anthropic:claude-3-5-sonnet",
         file_paths=[(str(temp_file), "text/plain")],
-        initial_message="Process this file"
+        initial_message="Process this file",
     )
 
 
@@ -178,13 +175,14 @@ def summarizing_config():
         conversation_manager_type="summarizing",
         summary_ratio=0.3,
         preserve_recent_messages=5,
-        summarization_model="gpt-4o-mini"
+        summarization_model="gpt-4o-mini",
     )
 
 
 # ============================================================================
 # Mock Fixtures
 # ============================================================================
+
 
 @pytest.fixture
 def mock_model():
@@ -217,7 +215,7 @@ def mock_framework_adapter():
     mock.adapt_tools.return_value = []
     mock.prepare_agent_args.return_value = {
         "system_prompt": "Test prompt",
-        "messages": []
+        "messages": [],
     }
     mock.adapt_content.return_value = []
     return mock
@@ -247,6 +245,7 @@ def mock_callback_handler():
 # Tool Configuration Fixtures
 # ============================================================================
 
+
 @pytest.fixture
 def python_tool_config():
     """Create a Python tool configuration for testing."""
@@ -255,7 +254,7 @@ def python_tool_config():
         "type": "python",
         "module_path": "test.tools",
         "functions": ["add", "subtract"],
-        "package_path": None
+        "package_path": None,
     }
 
 
@@ -267,34 +266,30 @@ def mcp_tool_config():
         "type": "mcp",
         "command": "test-mcp-server",
         "args": ["--port", "8080"],
-        "functions": ["get_weather", "send_email"]
+        "functions": ["get_weather", "send_email"],
     }
 
 
 @pytest.fixture
 def tool_spec_python():
     """Create a Python ToolSpec for testing."""
+
     def mock_function(x: int, y: int) -> int:
         return x + y
-    
-    return {
-        "tools": [mock_function],
-        "client": None
-    }
+
+    return {"tools": [mock_function], "client": None}
 
 
 @pytest.fixture
 def tool_spec_mcp(mock_mcp_client):
     """Create an MCP ToolSpec for testing."""
-    return {
-        "tools": None,
-        "client": mock_mcp_client
-    }
+    return {"tools": None, "client": mock_mcp_client}
 
 
 # ============================================================================
 # File Content Fixtures
 # ============================================================================
+
 
 @pytest.fixture
 def sample_text_file(temp_dir):
@@ -311,20 +306,17 @@ Used for testing file processing."""
 def sample_json_file(temp_dir):
     """Create a sample JSON file for content processing tests."""
     import json
-    
+
     file_path = temp_dir / "sample.json"
     data = {
         "name": "Test Data",
         "values": [1, 2, 3, 4, 5],
-        "metadata": {
-            "created": "2024-01-01",
-            "version": "1.0"
-        }
+        "metadata": {"created": "2024-01-01", "version": "1.0"},
     }
-    
-    with open(file_path, 'w') as f:
+
+    with open(file_path, "w") as f:
         json.dump(data, f, indent=2)
-    
+
     return file_path
 
 
@@ -352,6 +344,7 @@ def large_file(temp_dir):
 # Session Fixtures
 # ============================================================================
 
+
 @pytest.fixture
 def temp_sessions_dir(temp_dir):
     """Create a temporary sessions directory."""
@@ -377,6 +370,7 @@ def mock_session_manager():
 # Error Testing Fixtures
 # ============================================================================
 
+
 @pytest.fixture
 def invalid_config_data():
     """Create invalid configuration data for error testing."""
@@ -384,7 +378,7 @@ def invalid_config_data():
         "model": "",  # Invalid empty model
         "sliding_window_size": -1,  # Invalid negative size
         "summary_ratio": 2.0,  # Invalid ratio > 1.0
-        "file_paths": "not_a_list"  # Invalid type
+        "file_paths": "not_a_list",  # Invalid type
     }
 
 
@@ -400,7 +394,7 @@ def corrupted_json_file(temp_dir):
 def corrupted_yaml_file(temp_dir):
     """Create a corrupted YAML file for error testing."""
     file_path = temp_dir / "corrupted.yaml"
-    file_path.write_text('invalid: yaml: content: [')
+    file_path.write_text("invalid: yaml: content: [")
     return file_path
 
 
@@ -408,25 +402,26 @@ def corrupted_yaml_file(temp_dir):
 # Environment Fixtures
 # ============================================================================
 
+
 @pytest.fixture
 def clean_environment():
     """Provide a clean environment for testing."""
     # Store original environment
     original_env = dict(os.environ)
-    
+
     # Clear test-related environment variables
     test_vars = [
-        'SHOW_FULL_TOOL_INPUT',
-        'STRANDS_LOG_LEVEL',
-        'OPENAI_API_KEY',
-        'ANTHROPIC_API_KEY'
+        "SHOW_FULL_TOOL_INPUT",
+        "STRANDS_LOG_LEVEL",
+        "OPENAI_API_KEY",
+        "ANTHROPIC_API_KEY",
     ]
-    
+
     for var in test_vars:
         os.environ.pop(var, None)
-    
+
     yield
-    
+
     # Restore original environment
     os.environ.clear()
     os.environ.update(original_env)
@@ -436,16 +431,18 @@ def clean_environment():
 def mock_env_vars():
     """Set mock environment variables for testing."""
     original_env = dict(os.environ)
-    
+
     # Set test environment variables
-    os.environ.update({
-        'SHOW_FULL_TOOL_INPUT': 'true',
-        'STRANDS_LOG_LEVEL': 'DEBUG',
-        'TEST_MODE': 'true'
-    })
-    
+    os.environ.update(
+        {
+            "SHOW_FULL_TOOL_INPUT": "true",
+            "STRANDS_LOG_LEVEL": "DEBUG",
+            "TEST_MODE": "true",
+        }
+    )
+
     yield
-    
+
     # Restore original environment
     os.environ.clear()
     os.environ.update(original_env)
@@ -454,6 +451,7 @@ def mock_env_vars():
 # ============================================================================
 # Parametrized Fixtures
 # ============================================================================
+
 
 @pytest.fixture(params=["anthropic:claude-3-5-sonnet", "litellm:gpt-4o", "gpt-4o"])
 def model_strings(request):

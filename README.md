@@ -6,11 +6,13 @@ A configuration-driven factory framework for creating and managing [strands-agen
 
 - **Factory Pattern**: Clean separation between configuration and instantiation
 - **Multi-Framework Support**: Automatic support for any strands-compatible framework plus specialized adapters
-- **Advanced Tool System**: Python functions, MCP servers, automatic schema adaptation
+- **Advanced Tool System**: Python functions, MCP servers, A2A agent communication, automatic schema adaptation
 - **File Processing**: Upload and process documents in various formats with smart content extraction
 - **Smart Conversation Management**: Sliding window, summarizing, and custom strategies
 - **Session Persistence**: Save and restore conversation state across sessions
 - **Declarative Configuration**: Simple dataclass-based configuration with validation
+- **File-Loadable CLI Parameters**: Load long prompts and configurations from files using `@filename` syntax
+- **CLI Tools**: Interactive chatbot and A2A server with full CLI configuration support  
 - **Extensible Architecture**: Plugin system for custom adapters and tools
 
 ## Quick Start
@@ -35,13 +37,132 @@ pip install "strands-agent-factory[anthropic,openai,litellm]"
 pip install "strands-agent-factory[all-providers]"
 
 # Install with tools integration (optional)
-pip install "strands-agent-factory[tools]"
+pip install "strands-agent-factory[tools]"        # Python functions, MCP tools
+pip install "strands-agent-factory[a2a]"          # Agent-to-Agent communication
+
+# Install with all tools
+pip install "strands-agent-factory[all-tools]"
 
 # Full installation with everything
 pip install "strands-agent-factory[full]"
 ```
 
 **Note**: The framework extras automatically install the correct `strands-agents[framework]` dependencies with all required packages.
+
+## CLI Tools
+
+After installation, two command-line tools are available:
+
+### Interactive Chatbot
+
+```bash
+# Basic usage with default model
+strands-chatbot --model gpt-4o
+
+# With custom system prompt and tools
+strands-chatbot \
+  --model anthropic:claude-3-5-sonnet-20241022 \
+  --system-prompt "You are a helpful coding assistant" \
+  --tool-config-paths tools/code_tools.json tools/file_tools.json \
+  --show-tool-use
+
+# Load system prompt from file (new file-loadable feature!)
+strands-chatbot \
+  --model gpt-4o \
+  --system-prompt "@prompts/coding_assistant.txt" \
+  --custom-summarization-prompt "@prompts/tech_summary.txt" \
+  --conversation-manager-type summarizing
+
+# Load from configuration file
+strands-chatbot --agent-config my_chatbot_config.yaml
+
+# With file uploads for analysis
+strands-chatbot \
+  --model gpt-4o \
+  --file-paths "document.pdf,application/pdf" "data.csv,text/csv" \
+  --initial-message "Please analyze these files"
+
+# All CLI options from AgentFactoryConfig are available:
+strands-chatbot \
+  --model litellm:gemini/gemini-2.5-flash \
+  --conversation-manager-type summarizing \
+  --sliding-window-size 50 \
+  --session-id research_session \
+  --response-prefix "AI: "
+```
+
+### A2A Server
+
+```bash
+# Run any agent configuration as an A2A server
+strands-a2a-server \
+  --model gpt-4o \
+  --system-prompt "I am a specialist math agent" \
+  --tool-config-paths tools/math_tools.json \
+  --host 0.0.0.0 --port 8001
+
+# Load system prompt from file
+strands-a2a-server \
+  --model gpt-4o \
+  --system-prompt "@prompts/math_specialist.txt" \
+  --tool-config-paths tools/math_tools.json \
+  --port 8001
+
+# Load from configuration file  
+strands-a2a-server --agent-config specialist_agent.yaml --port 8002
+```
+
+### File-Loadable CLI Parameters
+
+Several CLI parameters support loading content from files using the `@filename` syntax:
+
+- `--system-prompt @path/to/prompt.txt` - Load system prompt from file
+- `--custom-summarization-prompt @path/to/summary_prompt.txt` - Load summarization prompt from file
+
+#### Examples
+
+```bash
+# Create prompt files
+mkdir -p prompts
+cat > prompts/coding_assistant.txt << 'EOF'
+You are an expert coding assistant with deep knowledge of software engineering best practices.
+
+**Your Role:**
+- Help users write clean, efficient, and maintainable code
+- Explain complex programming concepts clearly
+- Provide debugging assistance and optimization suggestions
+- Follow industry standards and best practices
+
+**Guidelines:**
+- Always explain your reasoning when making code suggestions
+- Include comments in code examples for clarity
+- Suggest testing approaches when appropriate
+- Consider security implications in your recommendations
+
+Ready to help with your coding challenges!
+EOF
+
+# Use the prompt file
+strands-chatbot \
+  --model gpt-4o \
+  --system-prompt "@prompts/coding_assistant.txt" \
+  --tool-config-paths tools/code_tools.json
+
+# Mix literal and file-loaded parameters
+strands-chatbot \
+  --model gpt-4o \
+  --system-prompt "You are a helpful assistant" \
+  --custom-summarization-prompt "@prompts/tech_summary.txt" \
+  --conversation-manager-type summarizing
+```
+
+#### File-Loadable Benefits
+
+- **Version Control**: Store prompts in version-controlled files
+- **Collaboration**: Share and collaborate on prompt development
+- **Maintenance**: Easily update complex prompts without touching command lines
+- **Reusability**: Use the same prompts across different configurations
+- **Security**: Keep sensitive prompts in protected files rather than command history
 
 ### Basic Usage
 
@@ -118,6 +239,7 @@ config = AgentFactoryConfig(
     tool_config_paths=[
         "tools/math_tools.json",
         "tools/file_tools.json", 
+        "tools/a2a_agents.json",
         "custom_tools.yaml"
     ],
     
@@ -143,48 +265,15 @@ agent = factory.create_agent()
 
 ## Architecture
 
-### Modern Modular Structure
-
-```
-strands_agent_factory/
-├── core/                    # Core functionality
-│   ├── factory.py          # Main AgentFactory
-│   ├── agent.py            # AgentProxy wrapper
-│   ├── config.py           # Configuration classes
-│   ├── types.py            # Type definitions
-│   ├── exceptions.py       # Exception hierarchy
-│   └── utils.py            # Utility functions
-├── adapters/               # Framework adapters
-│   ├── base.py            # Base adapter interface
-│   ├── generic.py         # Generic adapter (automatic support)
-│   ├── litellm.py         # LiteLLM integration
-│   ├── ollama.py          # Local models
-│   └── bedrock.py         # AWS Bedrock
-├── tools/                  # Tool management
-│   ├── factory.py         # Tool loading & configuration
-│   └── python.py          # Python function utilities
-├── messaging/              # Message processing
-│   ├── generator.py       # Message generation with file()
-│   └── content.py         # File content processing
-├── session/                # Session management
-│   ├── manager.py         # Session persistence
-│   └── conversation.py    # Conversation strategies
-└── handlers/               # Event handlers
-    └── callback.py        # Output handling
-```
-
-### Factory Pattern Benefits
-
-- **Separation of Concerns**: Configuration, initialization, and usage are cleanly separated
-- **Resource Management**: Automatic cleanup of MCP servers and sessions
-- **Framework Abstraction**: Unified interface across different AI providers
-- **Extensibility**: Plugin architecture for custom adapters and tools
+See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for detailed architectural documentation including the factory pattern benefits, component design, and internal structure.
 
 ## Framework Support
 
-### Automatic Generic Adapter
+The factory includes a powerful generic adapter that automatically supports any framework following standard strands-agents patterns, plus specialized adapters for frameworks requiring custom handling.
 
-The factory includes a powerful generic adapter that automatically supports any framework following standard strands-agents patterns:
+See [docs/FRAMEWORK_ADAPTERS.md](docs/FRAMEWORK_ADAPTERS.md) for comprehensive framework adapter documentation.
+
+### Automatic Generic Adapter
 
 ```python
 # These work automatically without custom adapters:
@@ -197,34 +286,11 @@ config = AgentFactoryConfig(model="anthropic:claude-3-5-sonnet") # Anthropic
 
 ### Specialized Adapters
 
-For frameworks requiring special handling:
-
 | Framework | Adapter | Special Features |
 |-----------|---------|------------------|
 | **LiteLLM** | `LiteLLMAdapter` | Tool schema cleaning, 100+ provider support |
 | **AWS Bedrock** | `BedrockAdapter` | BotocoreConfig handling, content adaptation |
 | **Ollama** | `OllamaAdapter` | Host configuration, local model support |
-
-### Custom Framework Adapters
-
-Extend support to new AI providers:
-
-```python
-from strands_agent_factory.adapters.base import FrameworkAdapter
-
-class MyProviderAdapter(FrameworkAdapter):
-    @property
-    def framework_name(self) -> str:
-        return "myprovider"
-    
-    def load_model(self, model_name, model_config):
-        # Implement provider-specific model loading
-        return MyProviderModel(model_name, **model_config or {})
-    
-    def adapt_tools(self, tools, model_string):
-        # Adapt tool schemas for provider compatibility
-        return [self._adapt_tool_schema(tool) for tool in tools]
-```
 
 ## Configuration
 
@@ -233,7 +299,7 @@ class MyProviderAdapter(FrameworkAdapter):
 | Parameter | Type | Description | Default |
 |-----------|------|-------------|---------|
 | `model` | `str` | Model identifier with optional framework prefix | Required |
-| `system_prompt` | `Optional[str]` | System prompt for the agent | `None` |
+| `system_prompt` | `Optional[str]` | System prompt for the agent (**supports @file.txt**) | `None` |
 | `initial_message` | `Optional[str]` | Initial user message (sent with files) | `None` |
 | `model_config` | `Optional[Dict[str, Any]]` | Framework-specific model parameters | `None` |
 | `tool_config_paths` | `List[PathLike]` | Paths to individual tool configuration files | `[]` |
@@ -246,12 +312,31 @@ class MyProviderAdapter(FrameworkAdapter):
 | `summary_ratio` | `float` | Ratio of messages to summarize (0.1-0.8) | `0.3` |
 | `summarization_model` | `Optional[str]` | Optional separate model for summarization | `None` |
 | `summarization_model_config` | `Optional[Dict[str, Any]]` | Framework-specific config for summarization model | `None` |
-| `custom_summarization_prompt` | `Optional[str]` | Custom prompt for summarization | `None` |
+| `custom_summarization_prompt` | `Optional[str]` | Custom prompt for summarization (**supports @file.txt**) | `None` |
 | `should_truncate_results` | `bool` | Whether to truncate tool results on overflow | `True` |
 | `emulate_system_prompt` | `bool` | Emulate system prompt for unsupported models | `False` |
-| `callback_handler` | `Optional[Callable]` | Custom callback handler for agent events | `None` |
 | `show_tool_use` | `bool` | Show verbose tool execution feedback | `False` |
 | `response_prefix` | `Optional[str]` | Prefix to display before agent responses | `None` |
+
+**Note**: The `callback_handler` and `output_printer` parameters are available for programmatic use but are not exposed in CLI tools as they require Python callable objects.
+
+### File-Loadable Parameters
+
+Parameters marked with **supports @file.txt** can load their content from files using the `@filename` syntax:
+
+```bash
+# Instead of inline prompts:
+--system-prompt "You are a helpful assistant..."
+
+# Load from file:
+--system-prompt "@prompts/assistant.txt"
+```
+
+This feature enables:
+- **Version control** of complex prompts
+- **Collaborative prompt development**
+- **Easy maintenance** of long prompts
+- **Reusable prompt libraries**
 
 ### Model String Formats
 
@@ -281,6 +366,7 @@ The factory intelligently handles various model identifier formats:
 
 Tools are loaded from individual JSON/YAML configuration files:
 
+#### Python Tools
 ```json
 {
   "id": "calculator_tools",
@@ -292,6 +378,7 @@ Tools are loaded from individual JSON/YAML configuration files:
 }
 ```
 
+#### MCP (Model Context Protocol) Tools
 ```json
 {
   "id": "mcp_server_tools",
@@ -303,11 +390,58 @@ Tools are loaded from individual JSON/YAML configuration files:
 }
 ```
 
+#### A2A (Agent-to-Agent) Tools
+```json
+{
+  "id": "company_agents",
+  "type": "a2a",
+  "urls": [
+    "http://employee-service:8001/",
+    "http://payroll-service:8002/",
+    "http://benefits-service:8003/"
+  ],
+  "timeout": 300,
+  "webhook_url": "https://my-app.example.com/webhook",
+  "webhook_token": "secret-webhook-token"
+}
+```
+
 ### Tool Types
 
-- **Python Functions**: Load functions from any Python module/package
-- **MCP Servers**: Model Context Protocol servers via stdio or HTTP
-- **Custom Tools**: Extend with custom tool adapters
+| Tool Type | Description | Use Cases |
+|-----------|-------------|-----------|
+| **Python Functions** | Load functions from any Python module/package | Calculations, data processing, file operations |
+| **MCP Servers** | Model Context Protocol servers via stdio or HTTP | External APIs, databases, specialized services |
+| **A2A Agents** | Communication with other AI agents | Multi-agent workflows, specialist agent consultation |
+
+### A2A (Agent-to-Agent) Communication
+
+A2A tools enable your agent to communicate with other AI agents as peers, creating powerful multi-agent workflows:
+
+#### Key Features
+- **Natural Language Communication**: Agents send natural language messages to each other
+- **Agent Discovery**: Dynamically discover available agents and their capabilities
+- **Multi-Agent Workflows**: Orchestrate complex tasks across specialized agents
+
+#### Available A2A Tools
+When you configure A2A agents, your agent automatically gets these tools:
+
+| Tool | Description |
+|------|-------------|
+| `a2a_discover_agent` | Discover a new agent by URL and get its capabilities |
+| `a2a_list_discovered_agents` | List all known agents and their details |
+| `a2a_send_message` | Send a natural language message to another agent |
+
+#### A2A vs MCP Comparison
+
+| Aspect | MCP Tools | A2A Tools |
+|--------|-----------|-----------|
+| **Communication** | Direct function calls | Natural language messages |
+| **Interface** | Tool schemas (JSON) | Conversational |
+| **Use Case** | External APIs, databases | Agent collaboration |
+| **Complexity** | Tool-specific parameters | Human-like requests |
+
+**Important Note**: A2A tools are not filterable - all three tools (`discover`, `list`, `send_message`) work together as a cohesive communication system.
 
 ## Smart File Processing
 
@@ -401,7 +535,100 @@ user_sessions/
     └── ...
 ```
 
-## Examples & Use Cases
+## CLI Examples & Use Cases
+
+### Interactive Chatbot with Tools
+
+```bash
+# Start chatbot with filesystem and code analysis tools
+strands-chatbot \
+  --model gpt-4o \
+  --system-prompt "@prompts/coding_assistant.txt" \
+  --tool-config-paths tools/filesystem.json tools/code_analysis.json \
+  --show-tool-use \
+  --response-prefix "Code Assistant: "
+
+# Example interaction:
+# You: What Python files are in the current directory?
+# Code Assistant: I'll check the current directory for Python files...
+# [Tool Use: list_directory with pattern *.py]
+# Code Assistant: I found 3 Python files: main.py, utils.py, and test_main.py
+```
+
+### Multi-Agent HR System
+
+```bash
+# Start HR agent that can coordinate with other specialist agents
+strands-a2a-server \
+  --model anthropic:claude-3-5-sonnet-20241022 \
+  --system-prompt "@prompts/hr_coordinator.txt" \
+  --tool-config-paths tools/company_agents.json tools/hr_tools.json \
+  --conversation-manager-type summarizing \
+  --custom-summarization-prompt "@prompts/hr_summary.txt" \
+  --session-id hr_main_agent \
+  --port 8000
+
+# Example A2A workflow:
+# User -> HR Agent: "I need a report on all AI engineers hired in 2024 with salary bands"
+# HR Agent -> Employee Agent: "List all employees with 'AI Engineer' titles hired in 2024"
+# HR Agent -> Payroll Agent: "Get salary band information for employee IDs [list]"
+# HR Agent -> User: "Here's your comprehensive report..."
+```
+
+### Research Assistant with Document Analysis
+
+```bash
+# Start research assistant with document uploads
+strands-chatbot \
+  --model litellm:gemini/gemini-2.5-flash \
+  --system-prompt "@prompts/research_assistant.txt" \
+  --tool-config-paths tools/research_tools.json \
+  --file-paths "papers/paper1.pdf,application/pdf" "papers/paper2.pdf,application/pdf" \
+  --file-paths "data/results.csv,text/csv" \
+  --initial-message "Please analyze these research papers and data files" \
+  --conversation-manager-type summarizing \
+  --custom-summarization-prompt "@prompts/research_summary.txt" \
+  --session-id research_2024 \
+  --show-tool-use
+```
+
+### Code Assistant with Project Context
+
+```bash
+# Load project files and start coding session
+strands-chatbot \
+  --model gpt-4o \
+  --system-prompt "@prompts/code_assistant.txt" \
+  --tool-config-paths tools/code_analysis.json tools/git_tools.yaml \
+  --file-paths "src/main.py,text/plain" "requirements.txt,text/plain" \
+  --file-paths "README.md,text/markdown" \
+  --conversation-manager-type sliding_window \
+  --sliding-window-size 50 \
+  --session-id coding_session
+```
+
+## Programmatic Examples
+
+### Multi-Agent HR System
+
+```python
+config = AgentFactoryConfig(
+    model="gpt-4o",
+    system_prompt="You are an HR assistant that coordinates with specialist agents.",
+    tool_config_paths=[
+        "tools/company_agents.json",  # A2A agent connections
+        "tools/hr_tools.json"         # Direct HR functions
+    ],
+    conversation_manager_type="summarizing",
+    session_id="hr_session"
+)
+
+# Example interaction:
+# User: "I need a report on all AI engineers hired in 2024 with their salary bands"
+# HR Agent -> Employee Agent: "List all employees with 'AI Engineer' or similar titles hired in 2024"
+# HR Agent -> Payroll Agent: "Get salary band information for employee IDs [list]"
+# HR Agent -> User: "Here's your comprehensive report..."
+```
 
 ### Research Assistant
 
@@ -511,14 +738,35 @@ logging.getLogger("strands_agent_factory").setLevel(logging.DEBUG)
 - Choose appropriate models for different tasks (GPT-4 for complex reasoning, GPT-4-mini for simple tasks)
 - Configure session persistence for multi-turn interactions
 - Use MCP servers for external system integration
+- Use A2A agents for complex multi-agent workflows
+- Store complex prompts in files using the `@filename` syntax for better maintainability
+
+## A2A Server Wrapper
+
+For multi-agent deployments, strands-agent-factory includes a generic A2A server wrapper that exposes any agent created by the factory as an Agent-to-Agent server that other agents can communicate with.
+
+```bash
+# Run any agent configuration as an A2A server
+strands-a2a-server --agent-config agent_config.yaml --host 0.0.0.0 --port 8001
+
+# Other agents can now connect and communicate with this agent
+```
+
+See [A2A_SERVER.md](A2A_SERVER.md) for detailed multi-agent system setup documentation and [docs/A2A_ARCHITECTURE.md](docs/A2A_ARCHITECTURE.md) for comprehensive architectural details.
 
 ## Testing & Development
 
 ### Running Examples
 
 ```bash
-# Basic functionality test
-python examples/basic_usage.py
+# Test the interactive chatbot
+strands-chatbot --model gpt-4o-mini --system-prompt "You are a test assistant"
+
+# Test with file-loaded prompt
+strands-chatbot --model gpt-4o-mini --system-prompt "@prompts/test_assistant.txt"
+
+# Test the A2A server
+strands-a2a-server --model gpt-4o-mini --port 8001
 
 # Set up API credentials for testing
 export OPENAI_API_KEY="your-key"
@@ -558,7 +806,7 @@ We welcome contributions! Please see our contribution guidelines:
 ```bash
 git clone https://github.com/your-username/strands-agent-factory.git
 cd strands-agent-factory
-pip install -e ".[dev,all-providers]"
+pip install -e ".[dev,all-providers,all-tools]"
 ```
 
 ## License
@@ -575,6 +823,7 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 ## Roadmap
 
 - Enhanced MCP server discovery and management
+- Advanced A2A agent orchestration and workflow management
 - Plugin system for custom conversation managers
 - Streaming response support for all frameworks
 - Advanced file processing with OCR and vision models

@@ -115,6 +115,237 @@ strands-a2a-server agent_config.yaml --version 2.0.0 --verbose
 | `--serve-at-root` | Serve at root path (useful with load balancers) | `False` |
 | `--verbose` | Enable verbose logging | `False` |
 
+## Skills Configuration
+
+The `--skills` parameter is a powerful feature for advertising agent capabilities and enabling agent discovery in multi-agent systems.
+
+### Skills Overview
+
+**Purpose**: Skills allow agents to advertise their capabilities, enabling other agents to discover and route requests to appropriate specialists.
+
+**Type**: `list[a2a.types.AgentSkill] | None`  
+**Format**: Space-separated string identifiers  
+**Default**: `None` (auto-detected from agent capabilities)  
+**Style**: `snake_case` naming convention  
+
+### Common Skill Categories
+
+#### Data & Analytics Skills
+```bash
+--skills data_analysis statistical_analysis data_visualization mathematical_computation chart_generation
+```
+
+#### Business Function Skills  
+```bash
+--skills employee_lookup policy_queries payroll_coordination payroll_data employee_coordination
+```
+
+#### Technical Function Skills
+```bash
+--skills file_processing math_tools reporting document_processing database_query api_integration
+```
+
+#### Domain-Specific Skills
+```bash
+# IT & DevOps
+--skills database_management network_administration security_analysis deployment_automation
+
+# Customer Service
+--skills customer_service order_management inventory_tracking ticket_management escalation_handling
+
+# Development & Engineering
+--skills code_generation testing deployment_automation api_development system_integration
+```
+
+### Skill Naming Conventions
+
+#### Recommended Patterns
+- **`{domain}_{action}`** - `data_analysis`, `employee_lookup`
+- **`{technology}_{operation}`** - `database_query`, `api_integration`  
+- **`{business_function}`** - `payroll_coordination`, `inventory_management`
+- **`{capability_description}`** - `mathematical_computation`, `natural_language_processing`
+
+#### Good Examples
+```bash
+# Domain + Action pattern
+--skills data_analysis document_processing image_generation text_summarization
+
+# Technology + Operation pattern  
+--skills database_query api_integration file_conversion email_sending
+
+# Business Function pattern
+--skills payroll_coordination inventory_management customer_onboarding order_fulfillment
+
+# Capability Description pattern
+--skills mathematical_computation natural_language_processing computer_vision
+```
+
+#### What to Avoid
+- ❌ Spaces in skill names (use underscores: `data_analysis` not `data analysis`)
+- ❌ Special characters beyond underscores (`data-analysis` should be `data_analysis`)
+- ❌ Very long skill names (keep concise and searchable)
+- ❌ Duplicate skill names in the same agent
+- ❌ Generic terms that aren't discoverable (`helper`, `utility`)
+
+### Skills Usage Examples
+
+#### Real-World Agent Configurations
+
+**Data Analysis Agent:**
+```bash
+strands-a2a-server data-agent.yaml \
+  --host 0.0.0.0 \
+  --port 8001 \
+  --skills data_analysis statistical_analysis data_visualization mathematical_computation chart_generation
+```
+
+**HR Management Agent:**
+```bash
+strands-a2a-server hr-agent.yaml \
+  --host 0.0.0.0 \
+  --port 8002 \
+  --skills employee_lookup policy_queries payroll_coordination benefits_management performance_reviews
+```
+
+**Customer Service Agent:**
+```bash
+strands-a2a-server customer-service.yaml \
+  --host 0.0.0.0 \
+  --port 8003 \
+  --skills order_lookup customer_support ticket_management escalation_handling refund_processing
+```
+
+**DevOps Automation Agent:**
+```bash
+strands-a2a-server devops-agent.yaml \
+  --host 0.0.0.0 \
+  --port 8004 \
+  --skills deployment_automation infrastructure_monitoring log_analysis security_scanning container_management
+```
+
+### Auto-Detection vs Manual Skills
+
+#### Manual Skills (Explicit)
+When you specify skills manually, they are advertised exactly as provided:
+
+```bash
+strands-a2a-server --model gpt-4o --skills data_analysis math_tools
+# Server Output: Skills: data_analysis, math_tools
+```
+
+#### Auto-Detection (Default)
+When no skills are specified, the agent attempts to detect capabilities from its tools:
+
+```bash
+strands-a2a-server --model gpt-4o  
+# Server Output: Skills: (auto-detected from agent capabilities)
+```
+
+Auto-detection analyzes:
+- Python function names and docstrings
+- MCP server capabilities
+- A2A client connections
+- Tool configuration metadata
+
+### Skills in Multi-Agent Discovery
+
+#### Agent Discovery Process
+1. **Agent A** needs help with data analysis
+2. **Agent A** calls `a2a_discover_agent()` or `a2a_list_discovered_agents()`
+3. **Discovery system** returns agents with their advertised skills
+4. **Agent A** identifies agents with `data_analysis` skill
+5. **Agent A** routes request to appropriate data analysis agent
+
+#### Example Discovery Response
+```json
+{
+  "id": "data-analysis-agent",
+  "url": "http://data-agent:8001/",
+  "skills": ["data_analysis", "statistical_analysis", "data_visualization"],
+  "version": "1.0.0"
+}
+```
+
+### Skills Best Practices
+
+#### 1. Be Descriptive and Specific
+```bash
+# Good: Specific and discoverable
+--skills financial_analysis budget_forecasting expense_tracking
+
+# Avoid: Too generic
+--skills analysis forecasting tracking
+```
+
+#### 2. Use Consistent Naming
+```bash
+# Good: Consistent pattern across agents
+--skills data_analysis data_visualization data_export
+--skills user_management user_authentication user_reporting
+
+# Avoid: Inconsistent patterns
+--skills data_analysis visualize export_data
+```
+
+#### 3. Match Agent Capabilities
+```bash
+# Good: Skills match actual agent tools
+# Agent with pandas, matplotlib, and statistics tools:
+--skills data_analysis statistical_analysis data_visualization
+
+# Avoid: Advertising skills the agent doesn't have
+--skills machine_learning  # But agent has no ML tools
+```
+
+#### 4. Consider Agent Interactions
+```bash
+# Design complementary skills across agents:
+# Agent 1: Data collection and processing
+--skills data_collection data_cleaning data_transformation
+
+# Agent 2: Data analysis and visualization  
+--skills data_analysis statistical_analysis data_visualization
+
+# Agent 3: Reporting and presentation
+--skills report_generation dashboard_creation presentation_formatting
+```
+
+#### 5. Use Skills for Routing Logic
+```bash
+# Customer service agent with escalation logic:
+--skills customer_support order_management basic_technical_support
+
+# Specialized technical agents:  
+--skills database_technical_support network_technical_support security_technical_support
+```
+
+### Skills Validation and Testing
+
+#### Verify Skills Match Capabilities
+```bash
+# Test that advertised skills work
+curl -X POST http://localhost:8001/message \
+  -H "Content-Type: application/json" \
+  -d '{"content": "Perform data analysis on this dataset: [1,2,3,4,5]"}'
+```
+
+#### Monitor Skills Usage
+```bash
+# Enable verbose logging to see how skills are used
+strands-a2a-server agent-config.yaml --skills data_analysis --verbose
+```
+
+#### Document Skills
+```yaml
+# Document skills in agent configuration comments
+# Skills: data_analysis, statistical_analysis, data_visualization
+# Capabilities: Can analyze datasets, generate statistics, create charts
+model: "gpt-4o"
+system_prompt: "Data analysis specialist with pandas, numpy, and matplotlib tools"
+```
+
+The skills system provides a foundation for intelligent agent discovery and workflow routing in complex multi-agent environments. By carefully choosing descriptive, consistent skills, you enable effective agent coordination and specialization.
+
 ## Configuration Examples
 
 ### Data Processing Agent
@@ -606,5 +837,7 @@ def route_message(message: str) -> str:
 ## Conclusion
 
 The A2A server wrapper provides a powerful way to create sophisticated multi-agent systems using strands-agent-factory. By exposing agents as conversational endpoints, you can build complex workflows that leverage the strengths of specialized agents while maintaining clean separation of concerns.
+
+The skills system enables intelligent agent discovery and routing, allowing you to build scalable multi-agent architectures where agents can find and collaborate with appropriate specialists automatically.
 
 For more information, see the main [README.md](README.md) and [docs/A2A_ARCHITECTURE.md](docs/A2A_ARCHITECTURE.md) for detailed architectural documentation.

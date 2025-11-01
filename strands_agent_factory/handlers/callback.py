@@ -10,7 +10,7 @@ is displayed during agent execution.
 """
 
 import os
-from typing import Any, Optional, Callable
+from typing import Any, Callable, Optional
 
 from loguru import logger
 
@@ -24,18 +24,18 @@ class ConfigurableCallbackHandler:
     This handler provides configurable control over tool execution feedback:
     - When show_tool_use=False (default): Suppresses verbose tool execution details
     - When show_tool_use=True: Shows full tool execution feedback with structured formatting
-    
+
     The handler processes various agent events including message content, tool usage,
     and completion signals to provide appropriate user feedback. It maintains state
     to track message boundaries and tool execution phases.
-    
+
     Also handles:
     - Response prefix printing in interactive mode
     - Final newline after responses
     - Tool input formatting with optional truncation
     - Environment-based configuration overrides
     - Custom output printer for formatted text (HTML/ANSI)
-    
+
     Attributes:
         show_tool_use: Whether to display verbose tool execution details
         response_prefix: Optional prefix to print before agent responses
@@ -48,11 +48,13 @@ class ConfigurableCallbackHandler:
         disable_truncation: Environment override for tool input truncation
     """
 
-    def __init__(self, 
-                 show_tool_use: Optional[bool] = False,
-                 response_prefix: Optional[str] = None,
-                 max_line_length: Optional[int] = None,
-                 output_printer: Optional[Callable] = None):
+    def __init__(
+        self,
+        show_tool_use: Optional[bool] = False,
+        response_prefix: Optional[str] = None,
+        max_line_length: Optional[int] = None,
+        output_printer: Optional[Callable] = None,
+    ):
         """
         Initialize the callback handler with display preferences.
 
@@ -64,9 +66,14 @@ class ConfigurableCallbackHandler:
                            If None, uses standard print(). Should have signature:
                            printer(text: str, **kwargs) -> None
         """
-        logger.trace("ConfigurableCallbackHandler.__init__ called with show_tool_use={}, response_prefix='{}', max_line_length={}, output_printer={}", 
-                    show_tool_use, response_prefix, max_line_length, output_printer is not None)
-        
+        logger.trace(
+            "ConfigurableCallbackHandler.__init__ called with show_tool_use={}, response_prefix='{}', max_line_length={}, output_printer={}",
+            show_tool_use,
+            response_prefix,
+            max_line_length,
+            output_printer is not None,
+        )
+
         super().__init__()
         self.show_tool_use = show_tool_use
         self.in_message = False
@@ -74,39 +81,44 @@ class ConfigurableCallbackHandler:
         self.max_line_length = max_line_length
         self.response_prefix = response_prefix
         self.output_printer = output_printer if output_printer is not None else print
-        
+
         # Initialize tool tracking
         self.tool_count = 0
         self.previous_tool_use = None
-        
+
         # Check env var once at startup for efficiency
-        self.disable_truncation = os.environ.get('SHOW_FULL_TOOL_INPUT', 'false').lower() == 'true'
-        
+        self.disable_truncation = (
+            os.environ.get("SHOW_FULL_TOOL_INPUT", "false").lower() == "true"
+        )
+
         logger.trace("ConfigurableCallbackHandler.__init__ completed")
 
     def _format_and_print_tool_input(self, tool_name: str, tool_input: Any):
         """
         Format and print tool input with structured formatting and optional truncation.
-        
+
         Uses the structured data printer to display tool inputs in a readable format
         with hierarchical indentation. Respects truncation settings and environment
         overrides for controlling output verbosity.
-        
+
         Args:
             tool_name: Name of the tool being called
             tool_input: Input parameters for the tool (any type)
         """
-        logger.trace("_format_and_print_tool_input called with tool_name='{}', input_type={}", 
-                    tool_name, type(tool_input).__name__)
-        
+        logger.trace(
+            "_format_and_print_tool_input called with tool_name='{}', input_type={}",
+            tool_name,
+            type(tool_input).__name__,
+        )
+
         self.output_printer(f"\nTool #{self.tool_count}: {tool_name}")
         print_structured_data(
-            tool_input, 
-            1, 
-            -1 if self.disable_truncation else self.max_line_length, 
-            printer=self.output_printer
+            tool_input,
+            1,
+            -1 if self.disable_truncation else (self.max_line_length or 90),
+            printer=self.output_printer,
         )
-        
+
         logger.trace("_format_and_print_tool_input completed")
 
     def __call__(self, **kwargs: Any) -> None:
@@ -116,7 +128,7 @@ class ConfigurableCallbackHandler:
         This is the main entry point for agent events. Processes various event types
         including message content, tool usage, reasoning text, and completion signals
         to provide appropriate user feedback based on configuration settings.
-        
+
         The handler maintains internal state to track message boundaries and tool
         execution phases, ensuring proper formatting and timing of output elements.
 
@@ -127,15 +139,18 @@ class ConfigurableCallbackHandler:
                 - data: Message content data
                 - complete: Boolean indicating if message is complete
                 - current_tool_use: Dict with current tool execution info
-                
+
         Event Processing:
             - Message content: Displays agent responses with optional prefixes
             - Tool usage: Collects and displays tool information when enabled
             - Reasoning text: Shows agent's internal reasoning process
             - Completion: Handles final formatting and cleanup
         """
-        if logger.level('TRACE').no >= logger._core.min_level:
-            logger.trace("ConfigurableCallbackHandler.__call__ called with kwargs keys: {}", list(kwargs.keys()))
+        if logger.level("TRACE").no >= logger._core.min_level:
+            logger.trace(
+                "ConfigurableCallbackHandler.__call__ called with kwargs keys: {}",
+                list(kwargs.keys()),
+            )
 
         event = kwargs.get("event", {})
         reasoningText = kwargs.get("reasoningText", False)
@@ -181,7 +196,7 @@ class ConfigurableCallbackHandler:
                 if self.previous_tool_use:
                     self._format_and_print_tool_input(
                         tool_name=self.previous_tool_use.get("name", "Unknown tool"),
-                        tool_input=self.previous_tool_use.get("input", {})
+                        tool_input=self.previous_tool_use.get("input", {}),
                     )
                     self.previous_tool_use = None
                 self.in_tool_use = False
@@ -190,5 +205,5 @@ class ConfigurableCallbackHandler:
         if complete and data:
             logger.trace("Handling completion with data")
             self.output_printer("\n")
-        
+
         logger.trace("ConfigurableCallbackHandler.__call__ completed")

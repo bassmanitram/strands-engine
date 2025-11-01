@@ -1,0 +1,14 @@
+{
+  "name": "Mathematical Analysis",
+  "id": "math",
+  "description": "Perform complex mathematical calculations including algebra, calculus, statistics, and numerical analysis",
+  "tags": ["math", "calculation", "analysis", "numerical"],
+  "examples": [
+    "Calculate the derivative of x^2 + 3x + 2",
+    "Solve the equation 2x + 5 = 15",
+    "Find the mean, median, and mode of a dataset",
+    "Compute the integral of sin(x) from 0 to pi"
+  ],
+  "inputModes": ["text"],
+  "outputModes": ["text", "structured"]
+}

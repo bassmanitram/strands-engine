@@ -39,9 +39,9 @@ coverage.xml
 
 # Environments
 .env
-.venv
+.venv*
 env/
-venv/
+venv*/
 ENV/
 env.bak/
 venv.bak/
@@ -66,3 +66,7 @@ Thumbs.db
 session_*.json
 /examples/temp/
 /tests/temp/
+docs/research/
+
+# GitHub Actions
+RELEASE_CHANGELOG.md

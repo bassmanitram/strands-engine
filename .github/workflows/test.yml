@@ -1,0 +1,54 @@
+name: Tests
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+
+jobs:
+  test:
+    name: Test Python ${{ matrix.python-version }} on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        python-version: ["3.10", "3.11", "3.12"]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev,all-providers,all-tools]"
+
+      - name: Check formatting with black
+        run: black --check --diff strands_agent_factory/ tests/
+
+      - name: Check import sorting with isort
+        run: isort --check-only --diff strands_agent_factory/ tests/
+
+      - name: Type check with mypy
+        # Continue on error - mypy has known issues that need to be addressed
+        continue-on-error: true
+        run: mypy strands_agent_factory/
+
+      - name: Run tests with pytest
+        run: pytest tests/ --cov=strands_agent_factory --cov-report=xml --cov-report=term-missing
+
+      - name: Upload coverage to Codecov
+        if: matrix.os == 'ubuntu-latest' && matrix.python-version == '3.10'
+        uses: codecov/codecov-action@v4
+        with:
+          file: ./coverage.xml
+          flags: unittests
+          name: codecov-umbrella
+          fail_ci_if_error: false

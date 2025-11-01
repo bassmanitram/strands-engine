@@ -1,0 +1,107 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+  id-token: write
+
+jobs:
+  release:
+    name: Build and Release
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+
+      - name: Install build dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install build twine
+
+      - name: Extract version from tag
+        id: get_version
+        run: |
+          VERSION=${GITHUB_REF#refs/tags/v}
+          echo "VERSION=${VERSION}" >> $GITHUB_OUTPUT
+          echo "Version: ${VERSION}"
+
+      - name: Verify version matches pyproject.toml
+        run: |
+          PYPROJECT_VERSION=$(grep '^version = ' pyproject.toml | cut -d'"' -f2)
+          TAG_VERSION="${{ steps.get_version.outputs.VERSION }}"
+          echo "pyproject.toml version: ${PYPROJECT_VERSION}"
+          echo "Tag version: ${TAG_VERSION}"
+          if [ "${PYPROJECT_VERSION}" != "${TAG_VERSION}" ]; then
+            echo "Error: Version mismatch!"
+            echo "pyproject.toml has version ${PYPROJECT_VERSION}"
+            echo "but tag is v${TAG_VERSION}"
+            exit 1
+          fi
+
+      - name: Build package
+        run: python -m build
+
+      - name: Generate changelog
+        id: changelog
+        run: |
+          PREV_TAG=$(git tag --sort=-version:refname | grep -v "^${{ github.ref_name }}$" | head -n 1)
+          if [ -z "$PREV_TAG" ]; then
+            PREV_TAG=$(git rev-list --max-parents=0 HEAD)
+          fi
+          echo "Previous tag: $PREV_TAG"
+          
+          CHANGELOG=$(git log ${PREV_TAG}..${{ github.ref_name }} --pretty=format:"- %s (%h)" --no-merges)
+          
+          # Save to file for GitHub release
+          echo "$CHANGELOG" > RELEASE_CHANGELOG.md
+          
+          # Also output for use in release body
+          echo "changelog<<EOF" >> $GITHUB_OUTPUT
+          echo "$CHANGELOG" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: Release v${{ steps.get_version.outputs.VERSION }}
+          body: |
+            ## Changes in v${{ steps.get_version.outputs.VERSION }}
+            
+            ${{ steps.changelog.outputs.changelog }}
+            
+            ## Installation
+            
+            ```bash
+            pip install strands-agent-factory==${{ steps.get_version.outputs.VERSION }}
+            ```
+            
+            Or to install with all providers and tools:
+            
+            ```bash
+            pip install strands-agent-factory[all-providers,all-tools]==${{ steps.get_version.outputs.VERSION }}
+            ```
+            
+            ## Upgrading
+            
+            ```bash
+            pip install --upgrade strands-agent-factory==${{ steps.get_version.outputs.VERSION }}
+            ```
+          files: |
+            dist/*
+          draft: false
+          prerelease: ${{ contains(steps.get_version.outputs.VERSION, 'rc') || contains(steps.get_version.outputs.VERSION, 'beta') || contains(steps.get_version.outputs.VERSION, 'alpha') }}
+
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          print-hash: true

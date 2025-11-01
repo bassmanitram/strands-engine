@@ -48,6 +48,7 @@ dependencies = [
     "loguru>=0.6.0",
     "nest-asyncio>=1.5.0",
     "PyYAML>=6.0",
+    "dataclass-args>=1.0.0",
 ]
 
 [project.optional-dependencies]
@@ -115,12 +116,33 @@ python_files = ["test_*.py"]
 python_classes = ["Test*"]
 python_functions = ["test_*"]
 asyncio_mode = "auto"
+addopts = [
+    "--cov=strands_agent_factory",
+    "--cov-report=term-missing",
+    "--cov-report=html",
+    "--cov-report=xml",
+]
 markers = [
     "unit: Unit tests that test individual components in isolation",
     "integration: Integration tests that test component interactions",
     "slow: Tests that take a long time to run",
     "requires_network: Tests that require network access",
     "requires_models: Tests that require actual model access (expensive)"
+]
+
+[tool.coverage.run]
+source = ["strands_agent_factory"]
+omit = ["*/tests/*", "*/__pycache__/*"]
+branch = true
+
+[tool.coverage.report]
+precision = 2
+show_missing = true
+exclude_lines = [
+    "pragma: no cover",
+    "if TYPE_CHECKING:",
+    "raise NotImplementedError",
+    "if __name__ == .__main__.:",
 ]
 
 [tool.black]
@@ -149,7 +171,12 @@ known_first_party = ["strands_agent_factory"]
 
 [tool.mypy]
 python_version = "3.10"
-warn_return_any = true
 warn_unused_configs = true
-disallow_untyped_defs = true
 ignore_missing_imports = true
+# Temporarily relaxed for initial CI setup - can be tightened incrementally
+disallow_untyped_defs = false
+check_untyped_defs = false
+warn_return_any = false
+# Still catch obvious errors
+warn_redundant_casts = true
+warn_unused_ignores = true

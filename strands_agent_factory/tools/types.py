@@ -35,13 +35,21 @@ CONFIG_FIELD_WEBHOOK_TOKEN = "webhook_token"
 
 # Error messages
 ERROR_MSG_MCP_DEPS_NOT_INSTALLED = "MCP dependencies not installed"
-ERROR_MSG_A2A_DEPS_NOT_INSTALLED = "A2A dependencies not installed (strands-agents-tools[a2a_client])"
+ERROR_MSG_A2A_DEPS_NOT_INSTALLED = (
+    "A2A dependencies not installed (strands-agents-tools[a2a_client])"
+)
 ERROR_MSG_UNKNOWN_TOOL_TYPE = "Unknown tool type '{}'"
-ERROR_MSG_PYTHON_CONFIG_MISSING_FIELDS = "Python tool configuration missing required fields"
+ERROR_MSG_PYTHON_CONFIG_MISSING_FIELDS = (
+    "Python tool configuration missing required fields"
+)
 ERROR_MSG_NO_TOOLS_LOADED = "No tools could be loaded from Python module '{}'"
-ERROR_MSG_MCP_TRANSPORT_MISSING = "MCP config must contain either 'command' (stdio) or 'url' (HTTP)"
+ERROR_MSG_MCP_TRANSPORT_MISSING = (
+    "MCP config must contain either 'command' (stdio) or 'url' (HTTP)"
+)
 ERROR_MSG_MCP_TRANSPORT_DEPS = "MCP transport dependencies not available: {}"
-ERROR_MSG_A2A_CONFIG_MISSING_URLS = "A2A tool configuration missing required 'urls' field"
+ERROR_MSG_A2A_CONFIG_MISSING_URLS = (
+    "A2A tool configuration missing required 'urls' field"
+)
 ERROR_MSG_TOOL_DISABLED = "Tool is disabled"
 ERROR_MSG_UNEXPECTED_ERROR = "Unexpected error creating {} tool spec for '{}': {}"
 
@@ -55,6 +63,7 @@ DEFAULT_FAILED_CONFIG_PREFIX = "failed-config-"
 
 class ToolSpecData(TypedDict, total=False):
     """Data returned from tool creation methods to be merged into enhanced specs."""
+
     tools: Optional[List[Callable]]  # Loaded Python/A2A tools
-    client: Optional[Any]            # MCP client instance
-    error: str                       # Error message if creation failed
+    client: Optional[Any]  # MCP client instance
+    error: str  # Error message if creation failed

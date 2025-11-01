@@ -1,0 +1,22 @@
+name: Research Assistant
+id: research
+description: Search for information, analyze documents, and provide comprehensive summaries with citations
+tags:
+  - research
+  - search
+  - analysis
+  - documentation
+  - citations
+examples:
+  - Summarize this research paper and identify key findings
+  - Find recent developments in artificial intelligence
+  - Compare different machine learning approaches
+  - Analyze this dataset and identify patterns
+  - Search for information about a specific topic
+inputModes:
+  - text
+  - url
+  - document
+outputModes:
+  - text
+  - structured
